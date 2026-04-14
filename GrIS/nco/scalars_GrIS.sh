@@ -24,14 +24,14 @@ procpath=./proc
 outpath=./output
 ## What output to produce
 flg_mm=true  # Integrals on model mask
-flg_bm=true  # IMBIE3-Mouginot basins
+flg_bm=false  # IMBIE3-Mouginot basins
 
 # Options
 ## What masking to apply If true, applied to all output
 # Remove GIC contribution  
 flg_GICmask=true # [Default true!]
 # Remove ice outside observed ice mask (can be combined with GIC masking) 
-flg_OBSmask=true # [Default false!]
+flg_OBSmask=false # [Default false!]
 
 #################################################################
 # Checks

@@ -11,15 +11,19 @@ from slc import slc_G2020
 from slc import slc_A2020
 
 # User settings
-lab="NORCE"
-model="CISM08-MAR312-p50"
-exp="historical"
+#lab="NORCE"
+#model="CISM4-MAR364-ERA-t1"
+#exp="expAE01"
+lab="VUW"
+model="PISM1"
+#exp="historical"
+exp="expAE04"
 histref="historical" # last year of historical is needed for SL reference 
 res="08"
 # Path to generic data
-datapath="../../../Data/GrIS"
+datapath="../../../Data/AIS"
 # Path to model output
-modelpath="../../../Models/GrIS"
+modelpath="../../../Models/AIS"
 # Path for resulting scalar files
 outpath="./output"
 ## What output to produce
@@ -41,23 +45,24 @@ verbose = False
 # File names and mapping 
 
 # area factors
-af2input=datapath+"/af2_ISMIP6_GrIS_"+res+"000m.nc"
+af2input=datapath+"/af2_el_ismip6_ant_"+res+".nc"
 # af2
 
 # Greenland mask
-mminput=datapath+"/maxmask1_"+res+"000m.nc"
+mminput=datapath+"/maxmask1_"+res+".nc"
 # maxmask1
 
-# IMBIE3 Mouginot extended basin masks 1-NO, 2-NE, 3-CE, 4-SE, 5-SW, 6-CW, 7-NW
-basininput=datapath+"/GrIS_Basins_Mouginot_extended_e"+res+"000m_v1.nc"
+# ISMIP6 regions:  West Antarctica, 2 East Antarctica, 3 Peninsula
+# IMBIE sectors:  1 to 18
+basininput=datapath+"/sectors_"+res+"km.nc"
 # IDs
 
-# GIC area factors
-gicinput=datapath+"/rgi60_connect01_iaf2_"+res+"000m_v1.nc"
-# iaf2
+## GIC area factors
+gicinput=datapath+"/GIC_iaf2_"+res+".nc"
+## iaf2
 
-# Possible output files
-file_suffix="GrIS_"+lab+"_"+model+"_"+exp+"_"+res+"000m.nc"
+# Output files
+file_suffix="AIS_"+lab+"_"+model+"_"+exp+"_"+res+"000m.nc"
 
 ####################################################
 # Prepare generic data file
@@ -69,27 +74,44 @@ oarea = 3.625e14 # m2 (Gregory et al., 2019)
 idat = nc.Dataset(mminput, 'r')
 maxmask1  = idat.variables["maxmask1"][:,:]
 idat.close()
-gris = maxmask1*0+1 # gris region covers the entire grid
+ais = maxmask1*0+1 # ais region covers the entire grid
 regions = SimpleNamespace()
-regions.mm = gris
+regions.mm = ais
 
-# Prepare IMBIE3 Mouginot masks, ID: From NO clockwise
+# Prepare regions masks
 if flg_bm:
     idat = nc.Dataset(basininput, 'r')
-    basinid = idat.variables["ID"][:,:]
-    regions.no  = (basinid==1).astype(float)
-    regions.ne  = (basinid==2).astype(float)
-    regions.ce  = (basinid==3).astype(float)
-    regions.se  = (basinid==4).astype(float)
-    regions.sw  = (basinid==5).astype(float)
-    regions.cw  = (basinid==6).astype(float)
-    regions.nw  = (basinid==7).astype(float)
+    # regions
+    basinid = idat.variables["regions"][:,:]
+    regions.wais  = (basinid==1).astype(float)
+    regions.eais  = (basinid==2).astype(float)
+    regions.pina  = (basinid==3).astype(float)
+    ## sectors
+    #basinid = idat.variables["sectors"][:,:]
+    #regions.r01 = (basinid==1).astype(float)
+    #regions.r02 = (basinid==2).astype(float)
+    #regions.r03 = (basinid==3).astype(float)
+    #regions.r04 = (basinid==4).astype(float)
+    #regions.r05 = (basinid==5).astype(float)
+    #regions.r06 = (basinid==6).astype(float)
+    #regions.r07 = (basinid==7).astype(float)
+    #regions.r08 = (basinid==8).astype(float)
+    #regions.r09 = (basinid==9).astype(float)
+    #regions.r10 = (basinid==10).astype(float)
+    #regions.r11 = (basinid==11).astype(float)
+    #regions.r12 = (basinid==12).astype(float)
+    #regions.r13 = (basinid==13).astype(float)
+    #regions.r14 = (basinid==14).astype(float)
+    #regions.r15 = (basinid==15).astype(float)
+    #regions.r16 = (basinid==16).astype(float)
+    #regions.r17 = (basinid==17).astype(float)
+    #regions.r18 = (basinid==18).astype(float)
     idat.close()
     # Test no gaps
-    gristest = regions.no+regions.ne+regions.ce+regions.se+regions.sw+regions.cw+regions.nw
-    nx,ny = regions.no.shape
+    aistest = regions.wais+regions.eais+regions.pina
+    nx,ny = regions.wais.shape
     if verbose:
-        print(np.sum(gris), np.sum(gristest),nx*ny)
+        print(np.sum(ais), np.sum(aistest),nx*ny)
 
 # Prepare area factors
 idat = nc.Dataset(af2input, 'r')
@@ -108,7 +130,7 @@ if flg_GICmask:
 # Main experiment
 exppath=modelpath+"/"+lab+"/"+model+"/"+exp+"_"+res
 # Model geometry
-idat = nc.Dataset(exppath+"/lithk_GrIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
+idat = nc.Dataset(exppath+"/lithk_AIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
 lithk  = idat.variables["lithk"][:,:,:]
 # Pick up time axis
 time_model  = idat.variables["time"][:]
@@ -116,17 +138,17 @@ time_units = idat.variables["time"].units
 time_long_name = idat.variables["time"].long_name
 time_calendar = idat.variables["time"].calendar
 idat.close()
-idat = nc.Dataset(exppath+"/topg_GrIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
+idat = nc.Dataset(exppath+"/topg_AIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
 topg  = idat.variables["topg"][:,:,:]
 idat.close()
 
 # Historical reference experiment; use last year
 histrefpath=modelpath+"/"+lab+"/"+model+"/"+histref+"_"+res
 # Model geometry
-idat = nc.Dataset(histrefpath+"/lithk_GrIS_"+lab+"_"+model+"_"+histref+".nc", 'r')
+idat = nc.Dataset(histrefpath+"/lithk_AIS_"+lab+"_"+model+"_"+histref+".nc", 'r')
 lithk_ref  = idat.variables["lithk"][-1,:,:]
 idat.close()
-idat = nc.Dataset(histrefpath+"/topg_GrIS_"+lab+"_"+model+"_"+histref+".nc", 'r')
+idat = nc.Dataset(histrefpath+"/topg_AIS_"+lab+"_"+model+"_"+histref+".nc", 'r')
 topg_ref  = idat.variables["topg"][-1,:,:]
 idat.close()
 
@@ -143,13 +165,13 @@ c.RHOFW = rhof # kg/m3
 c.AO = oarea # m2
 
 # Model masks
-idat = nc.Dataset(exppath+"/sftgif_GrIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
+idat = nc.Dataset(exppath+"/sftgif_AIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
 sftgif  = idat.variables["sftgif"][:,:,:]
 idat.close()
-idat = nc.Dataset(exppath+"/sftgrf_GrIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
+idat = nc.Dataset(exppath+"/sftgrf_AIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
 sftgrf  = idat.variables["sftgrf"][:,:,:]
 idat.close()
-idat = nc.Dataset(exppath+"/sftflf_GrIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
+idat = nc.Dataset(exppath+"/sftflf_AIS_"+lab+"_"+model+"_"+exp+".nc", 'r')
 sftflf  = idat.variables["sftflf"][:,:,:]
 idat.close()
 
