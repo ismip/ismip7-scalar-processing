@@ -385,13 +385,8 @@ ncatted -a long_name,vpov_${basin},o,c,"potential ocean volume" ${scfile_bm}
 ncatted -a units,vpov_${basin},o,c,"m3" ${scfile_bm}
 /bin/rm ${tmp_af} ${tmp_sc}
 # Corrected SLE
-if $flg_pov; then
-    ncap2 -A -s "sl_G2020_${basin}=(vaf_${basin}+vden_${basin}+vpov_${basin})/oarea" ${scfile_bm} ${scfile_bm} 
-    ncatted -a long_name,sl_G2020_${basin},o,c,"corrected sealevel equivalent ice mass (af+den+pov)" ${scfile_bm}
-else
-    ncap2 -A -s "sl_G2020_${basin}=(vaf_${basin}+vden_${basin})/oarea" ${scfile_bm} ${scfile_bm} 
-    ncatted -a long_name,sl_G2020_${basin},o,c,"corrected sealevel equivalent ice mass (af+den)" ${scfile_bm}
-fi
+ncap2 -A -s "sl_G2020_${basin}=(vaf_${basin}+vden_${basin}+vpov_${basin})/oarea" ${scfile_bm} ${scfile_bm} 
+ncatted -a long_name,sl_G2020_${basin},o,c,"corrected sealevel equivalent ice mass (af+den+pov)" ${scfile_bm}
 ncatted -a standard_name,sl_G2020_${basin},d,, ${scfile_bm}
 ncatted -a units,sl_G2020_${basin},o,c,"m" ${scfile_bm}
 
