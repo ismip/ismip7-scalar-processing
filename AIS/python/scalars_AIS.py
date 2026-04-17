@@ -45,20 +45,20 @@ verbose = False
 # File names and mapping 
 
 # area factors
-af2input=datapath+"/af2_el_ismip6_ant_"+res+".nc"
+af2input=datapath+"/af2_AIS_"+res+"000m_v1.nc"
 # af2
 
-# Greenland mask
-mminput=datapath+"/maxmask1_"+res+".nc"
+# Antarctic mask; TODO needs to be defined if needed
+mminput=datapath+"/maxmask1_AIS_"+res+"000m_v0.nc"
 # maxmask1
 
-# ISMIP6 regions:  West Antarctica, 2 East Antarctica, 3 Peninsula
-# IMBIE sectors:  1 to 18
-basininput=datapath+"/sectors_"+res+"km.nc"
-# IDs
+# IMBIE3 basins: 1 to 18; 1 = H-HP; 2 = EP-F; 3 = F-G; 4 = G-H; 5 = J-Jpp; 6 = E-Ep 7; = D-Dp 8; = Cp-D 9; = B-C 10; = A-Ap 11; = Jpp-K 12; = Dp-E 13; = Ap-B; 14; = C-CP; 15 = K-A; 16 = Ipp-J; 17 = I-Ipp; 18 = Hp-I
+# IMBIE3 regions: West Antarctica, 2 East Antarctica, 3 Peninsula
+basininput=datapath+"/basins_regions_AIS_Rignot_extended_"+res+"000m_v1.nc"
+# basins, regions
 
-## GIC area factors
-gicinput=datapath+"/GIC_iaf2_"+res+".nc"
+## GIC area factors; TODO needs to be defined if needed
+gicinput=datapath+"/iaf2_GIC_AIS_"+res+"000m_v0.nc"
 ## iaf2
 
 # Output files
@@ -70,7 +70,7 @@ file_suffix="AIS_"+lab+"_"+model+"_"+exp+"_"+res+"000m.nc"
 # Defined ocean area
 oarea = 3.625e14 # m2 (Gregory et al., 2019)
 
-# Prepare Greenland mask
+# Prepare Antarctic mask
 idat = nc.Dataset(mminput, 'r')
 maxmask1  = idat.variables["maxmask1"][:,:]
 idat.close()
@@ -86,26 +86,26 @@ if flg_bm:
     regions.wais  = (basinid==1).astype(float)
     regions.eais  = (basinid==2).astype(float)
     regions.pina  = (basinid==3).astype(float)
-    ## sectors
-    #basinid = idat.variables["sectors"][:,:]
-    #regions.r01 = (basinid==1).astype(float)
-    #regions.r02 = (basinid==2).astype(float)
-    #regions.r03 = (basinid==3).astype(float)
-    #regions.r04 = (basinid==4).astype(float)
-    #regions.r05 = (basinid==5).astype(float)
-    #regions.r06 = (basinid==6).astype(float)
-    #regions.r07 = (basinid==7).astype(float)
-    #regions.r08 = (basinid==8).astype(float)
-    #regions.r09 = (basinid==9).astype(float)
-    #regions.r10 = (basinid==10).astype(float)
-    #regions.r11 = (basinid==11).astype(float)
-    #regions.r12 = (basinid==12).astype(float)
-    #regions.r13 = (basinid==13).astype(float)
-    #regions.r14 = (basinid==14).astype(float)
-    #regions.r15 = (basinid==15).astype(float)
-    #regions.r16 = (basinid==16).astype(float)
-    #regions.r17 = (basinid==17).astype(float)
-    #regions.r18 = (basinid==18).astype(float)
+    ## basins
+    basinid = idat.variables["basins"][:,:]
+    regions.r01 = (basinid==1).astype(float)
+    regions.r02 = (basinid==2).astype(float)
+    regions.r03 = (basinid==3).astype(float)
+    regions.r04 = (basinid==4).astype(float)
+    regions.r05 = (basinid==5).astype(float)
+    regions.r06 = (basinid==6).astype(float)
+    regions.r07 = (basinid==7).astype(float)
+    regions.r08 = (basinid==8).astype(float)
+    regions.r09 = (basinid==9).astype(float)
+    regions.r10 = (basinid==10).astype(float)
+    regions.r11 = (basinid==11).astype(float)
+    regions.r12 = (basinid==12).astype(float)
+    regions.r13 = (basinid==13).astype(float)
+    regions.r14 = (basinid==14).astype(float)
+    regions.r15 = (basinid==15).astype(float)
+    regions.r16 = (basinid==16).astype(float)
+    regions.r17 = (basinid==17).astype(float)
+    regions.r18 = (basinid==18).astype(float)
     idat.close()
     # Test no gaps
     aistest = regions.wais+regions.eais+regions.pina
@@ -197,7 +197,7 @@ if verbose:
     print("sftflf:", sftflf.shape)
 
 #############################################################
-# Greenland and basin wide integrals
+# Antarctic and basin wide integrals
 
 for regionName, region in vars(regions).items():
     print(f"{regionName}")
@@ -209,20 +209,23 @@ for regionName, region in vars(regions).items():
     # Reference state
     H0 = lithk_ref * maxmask1 * iaf2GIC
     B0 = topg_ref
-    S0 = topg_ref * 0.0 # Fix sealevel to 0
+    # TODO clarify if S0=0 is correct for all models
+    S0 = topg_ref * 0.0 # Fix sealevel to 0; 
     
     # Use A for weigthing and basin masking
     A = region * af2 * (float(res)*1000.0)**2
     
     nt = len(lithk)
     
-    # time loop
+    # time loop; 
     for n in range(0,nt):
         #print(regionName, str(n))
     
         H = lithk[n,:,:] * maxmask1 * iaf2GIC
         B = topg[n,:,:]
         
+        # TODO clarify if this is how A2020 should be calculated
+        # TODO check potential issues with partial masks
         VAF_list.append(slc_vaf.get_slc_vaf(H0,H,B0,B0,S0,S0,A,c))
         G20_list.append(slc_G2020.get_slc_G2020(H0,H,B0,B,A,c))
         A20_list.append(slc_A2020.get_slc_A2020(H0,H,B0,B0,S0,S0,A,c))

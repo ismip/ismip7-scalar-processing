@@ -41,19 +41,19 @@ verbose = False
 # File names and mapping 
 
 # area factors
-af2input=datapath+"/af2_ISMIP6_GrIS_"+res+"000m.nc"
+af2input=datapath+"/af2_GrIS_"+res+"000m_v1.nc"
 # af2
 
 # Greenland mask
-mminput=datapath+"/maxmask1_"+res+"000m.nc"
+mminput=datapath+"/maxmask1_GrIS_"+res+"000m_v1.nc"
 # maxmask1
 
 # IMBIE3 Mouginot extended basin masks 1-NO, 2-NE, 3-CE, 4-SE, 5-SW, 6-CW, 7-NW
-basininput=datapath+"/GrIS_Basins_Mouginot_extended_e"+res+"000m_v1.nc"
+basininput=datapath+"/basins_GrIS_Mouginot_extended_"+res+"000m_v1.nc"
 # IDs
 
-# GIC area factors
-gicinput=datapath+"/rgi60_connect01_iaf2_"+res+"000m_v1.nc"
+# GIC area factors; TODO update to RGI7
+gicinput=datapath+"/iaf2_GIC_GrIS_"+res+"000m_v0.nc"
 # iaf2
 
 # Possible output files
@@ -73,10 +73,10 @@ gris = maxmask1*0+1 # gris region covers the entire grid
 regions = SimpleNamespace()
 regions.mm = gris
 
-# Prepare IMBIE3 Mouginot masks, ID: From NO clockwise
+# Prepare IMBIE3 Mouginot masks, basins: From NO clockwise
 if flg_bm:
     idat = nc.Dataset(basininput, 'r')
-    basinid = idat.variables["ID"][:,:]
+    basinid = idat.variables["basins"][:,:]
     regions.no  = (basinid==1).astype(float)
     regions.ne  = (basinid==2).astype(float)
     regions.ce  = (basinid==3).astype(float)
@@ -201,6 +201,8 @@ for regionName, region in vars(regions).items():
         H = lithk[n,:,:] * maxmask1 * iaf2GIC
         B = topg[n,:,:]
         
+        # TODO clarify if this is how A2020 should be calculated
+        # TODO check potential issues with partial masks
         VAF_list.append(slc_vaf.get_slc_vaf(H0,H,B0,B0,S0,S0,A,c))
         G20_list.append(slc_G2020.get_slc_G2020(H0,H,B0,B,A,c))
         A20_list.append(slc_A2020.get_slc_A2020(H0,H,B0,B0,S0,S0,A,c))
