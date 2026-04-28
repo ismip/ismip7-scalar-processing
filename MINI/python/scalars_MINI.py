@@ -3,8 +3,9 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../AIS/python'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../..'))
 
+import argparse
 import netCDF4 as nc
 import numpy as np
 from types import SimpleNamespace
@@ -16,13 +17,20 @@ from slc import slc_A2020
 from slc.sl_constants import RHOI, RHOSW, RHOFW, AO
 
 # User settings
+parser = argparse.ArgumentParser(description="ISMIP7 MINI scalar processing")
+parser.add_argument("--model", required=True, choices=["MINI0", "MINI1"],
+                    help="MINI variant (MINI0 or MINI1)")
+parser.add_argument("--exp",   required=True,
+                    help="Experiment name (e.g. exp0, expg)")
+args = parser.parse_args()
+
 lab   = "ISMIP7"
-model = "MINI0"
-exp   = "expg"
+model = args.model
+exp   = args.exp
 # Path to generic data
-datapath  = "../../Data/MINI0"
+datapath  = "../../Data/" + model
 # Path to model output
-modelpath = "../../Models/MINI/ISMIP7/MINI0"
+modelpath = "../../Models/MINI/ISMIP7/" + model
 # Path for resulting scalar files
 outpath = "./output"
 ## What output to produce
@@ -46,15 +54,15 @@ dx = 600000.0  # m (600 km)
 # File names and mapping
 
 # area factors
-af2input = datapath + "/af2_MINI0_vCDO.nc"
+af2input = datapath + "/af2_" + model + "_vCDO.nc"
 # af2
 
 # Antarctic mask
-mminput = datapath + "/maxmask1_MINI0_v0.nc"
+mminput = datapath + "/maxmask1_" + model + "_v0.nc"
 # maxmask1
 
 # GIC area factors
-gicinput = datapath + "/iaf2_MINI0_v0.nc"
+gicinput = datapath + "/iaf2_" + model + "_v0.nc"
 # iaf2
 
 # Output files
@@ -148,9 +156,12 @@ if verbose:
 for regionName, region in vars(regions).items():
     print(f"{regionName}")
 
-    VAF_list = []
-    G20_list = []
-    A20_list = []
+    VAF_list  = []
+    G20_list  = []
+    A20_list  = []
+    Vtot_list = []
+    Vgr_list  = []
+    Vfl_list  = []
 
     # Reference state
     H0 = lithk_ref * maxmask1 * iaf2GIC
@@ -171,15 +182,24 @@ for regionName, region in vars(regions).items():
         VAF_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B0, S0, S0, A, c))
         G20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
         A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B0, S0, S0, A, c))
+        Vtot_list.append(slc_vaf.get_slc_vtot(H0, H, A, c))
+        Vgr_list.append(slc_vaf.get_slc_vgr(H0, H, B0, B, S0, S0, A, c))
+        Vfl_list.append(slc_vaf.get_slc_vfl(H0, H, B0, B, S0, S0, A, c))
 
-    sl_VAF = np.array(VAF_list)
-    sl_G20 = np.array(G20_list)
-    sl_A20 = np.array(A20_list)
+    sl_VAF  = np.array(VAF_list)
+    sl_G20  = np.array(G20_list)
+    sl_A20  = np.array(A20_list)
+    sl_Vtot = np.array(Vtot_list)
+    sl_Vgr  = np.array(Vgr_list)
+    sl_Vfl  = np.array(Vfl_list)
 
     if verbose:
         print(sl_VAF)
         print(sl_G20)
         print(sl_A20)
+        print(sl_Vtot)
+        print(sl_Vgr)
+        print(sl_Vfl)
 
     ###############################################
     # Write netcdf file
@@ -192,6 +212,9 @@ for regionName, region in vars(regions).items():
     var_VAF   = ds.createVariable('slc_VAF',  'float', ('time'), zlib=True)
     var_G2020 = ds.createVariable('slc_G2020','float', ('time'), zlib=True)
     var_A2020 = ds.createVariable('slc_A2020','float', ('time'), zlib=True)
+    var_Vtot  = ds.createVariable('slc_Vtot', 'float', ('time'), zlib=True)
+    var_Vgr   = ds.createVariable('slc_Vgr',  'float', ('time'), zlib=True)
+    var_Vfl   = ds.createVariable('slc_Vfl',  'float', ('time'), zlib=True)
     # Attributes
     ds.description = file_description
     var_time.units      = time_units
@@ -203,11 +226,20 @@ for regionName, region in vars(regions).items():
     var_G2020.units     = 'm'
     var_A2020.long_name = 'Sea level contribution based on A2020'
     var_A2020.units     = 'm'
+    var_Vtot.long_name  = 'Sea level contribution based on total ice volume change'
+    var_Vtot.units      = 'm'
+    var_Vgr.long_name   = 'Sea level contribution based on grounded ice volume change'
+    var_Vgr.units       = 'm'
+    var_Vfl.long_name   = 'Sea level contribution based on floating ice volume change'
+    var_Vfl.units       = 'm'
     # assign data
     var_time[:]  = time_model
     var_VAF[:]   = sl_VAF[:]
     var_G2020[:] = sl_G20[:]
     var_A2020[:] = sl_A20[:]
+    var_Vtot[:]  = sl_Vtot[:]
+    var_Vgr[:]   = sl_Vgr[:]
+    var_Vfl[:]   = sl_Vfl[:]
 
     ds.close()
     print("Created file ", scfile)

@@ -44,7 +44,7 @@ def get_slc_vaf_HBA(H0,H,B0,B,A,c):
 
 # Grounded ice volume change 
 def get_vgr(H,B,S,A,c):
-    mask_gr = H > (B-S)*c.RHOSW/c.RHOI 
+    mask_gr = H > (S-B)*c.RHOSW/c.RHOI
     vol = np.sum((H*A)[ mask_gr ])
     return vol
 
@@ -54,11 +54,22 @@ def get_slc_vgr(H0,H,B0,B,S0,S,A,c):
   slc_gr = -(sle_gr - sle_gr_ref)
   return slc_gr
 
+# Floating ice volume change 
+def get_vfl(H,B,S,A,c):
+    mask_fl = H <= (S-B)*c.RHOSW/c.RHOI
+    vol = np.sum((H*A)[ mask_fl ])
+    return vol
+
+def get_slc_vfl(H0,H,B0,B,S0,S,A,c):
+  sle_fl_ref = get_vfl(H0,B0,S0,A,c) / c.AO * c.RHOI/c.RHOFW
+  sle_fl = get_vfl(H,B,S,A,c) / c.AO * c.RHOI/c.RHOFW
+  slc_fl = -(sle_fl - sle_fl_ref)
+  return slc_fl
+
 
 # Total ice volume change 
-def get_vtot(H,A,c):
-    H_tot = H *c.RHOSW/c.RHOI 
-    vol = np.sum(H_tot*A)
+def get_vtot(H,A):
+    vol = np.sum(H*A)
     return vol
 
 def get_slc_vtot(H0,H,A,c):
