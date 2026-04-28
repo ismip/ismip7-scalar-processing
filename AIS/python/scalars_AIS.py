@@ -14,21 +14,21 @@ from slc import slc_A2020
 #lab="NORCE"
 #model="CISM4-MAR364-ERA-t1"
 #exp="expAE01"
-lab="VUW"
-model="PISM1"
+lab="ISMIP7"
+model="TEST"
 #exp="historical"
-exp="expAE04"
+exp="exp0"
 histref="historical" # last year of historical is needed for SL reference 
 res="08"
 # Path to generic data
-datapath="../../../Data/AIS"
+datapath="../../Data/AIS"
 # Path to model output
-modelpath="../../../Models/AIS"
+modelpath="../../Models/AIS"
 # Path for resulting scalar files
 outpath="./output"
 ## What output to produce
 flg_mm=True  # Integrals on model mask
-flg_bm=True  # IMBIE3-Mouginot basins
+flg_bm=False  # IMBIE3-Mouginot basins
 
 # Description for netcdf global
 file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no"

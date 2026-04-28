@@ -17,9 +17,9 @@ exp="historical"
 histref="historical" # last year of historical is needed for SL reference 
 res="08"
 # Path to generic data
-datapath="../../../Data/GrIS"
+datapath="../../Data/GrIS"
 # Path to model output
-modelpath="../../../Models/GrIS"
+modelpath="../../Models/GrIS"
 # Path for resulting scalar files
 outpath="./output"
 ## What output to produce
