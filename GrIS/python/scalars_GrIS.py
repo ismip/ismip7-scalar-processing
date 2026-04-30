@@ -1,6 +1,10 @@
 # Calculate scalar variables from ISMIP7 3D model output
 # Heiko Goelzer 2026 (heig@norceresearch.no)
 
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../..'))
+
 import netCDF4 as nc
 import numpy as np
 from types import SimpleNamespace
