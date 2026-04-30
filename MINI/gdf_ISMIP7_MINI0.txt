@@ -1,0 +1,16 @@
+#
+# ISMIP7 grid description file
+# MINI0 test case (12x12 grid, 600 km resolution, half-cell offset from MINI1), Antarctica EPSG:3031
+#
+gridtype  = projection
+xsize     = 12
+ysize     = 12
+xunits    = "meter"
+yunits    = "meter"
+xfirst    = -3340000
+yfirst    = -3340000
+xinc      = 600000
+yinc      = 600000
+grid_mapping = crs
+grid_mapping_name = polar_stereographic
+proj_params = "+proj=stere +lon_0=0 +lat_ts=71 +lat_0=-90 +x_0=0 +y_0=0"
