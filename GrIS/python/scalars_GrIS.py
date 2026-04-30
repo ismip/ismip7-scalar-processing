@@ -35,8 +35,11 @@ file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch
 
 # Options
 ## What masking to apply If true, applied to all output
-# Remove GIC contribution  
+# Remove GIC contribution
 flg_GICmask=True # [Default True!]
+
+# A2020: stepwise cumulative (True, default) vs. all relative to reference (False)
+flg_A20_cumul = True
 
 # More output
 verbose = False
@@ -197,19 +200,31 @@ for regionName, region in vars(regions).items():
     A = region * af2 * (float(res)*1000.0)**2
     
     nt = len(lithk)
-    
+
     # time loop
+    if flg_A20_cumul:
+        H_prev = H0.copy()
+        B_prev = B0.copy()
+        S_prev = S0.copy()
+        A20_cumsum = 0.0
+
     for n in range(0,nt):
         #print(regionName, str(n))
-    
+
         H = lithk[n,:,:] * maxmask1 * iaf2GIC
         B = topg[n,:,:]
-        
-        # TODO clarify if this is how A2020 should be calculated
+
         # TODO check potential issues with partial masks
         VAF_list.append(slc_vaf.get_slc_vaf(H0,H,B0,B0,S0,S0,A,c))
         G20_list.append(slc_G2020.get_slc_G2020(H0,H,B0,B,A,c))
-        A20_list.append(slc_A2020.get_slc_A2020(H0,H,B0,B0,S0,S0,A,c))
+        if flg_A20_cumul:
+            A20_cumsum += slc_A2020.get_slc_A2020(H_prev,H,B_prev,B_prev,S_prev,S_prev,A,c)
+            A20_list.append(A20_cumsum)
+            H_prev = H.copy()
+            B_prev = B.copy()
+        else:
+            # A2020 relative to reference state, like G2020 and VAF
+            A20_list.append(slc_A2020.get_slc_A2020(H0,H,B0,B0,S0,S0,A,c))
     
     sl_VAF = np.array(VAF_list)
     sl_G20 = np.array(G20_list)

@@ -44,6 +44,9 @@ file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch
 # Remove GIC contribution
 flg_GICmask = True  # [Default True!]
 
+# A2020: stepwise cumulative (True, default) vs. all relative to reference (False)
+flg_A20_cumul = True
+
 # More output
 verbose = False
 
@@ -174,6 +177,12 @@ for regionName, region in vars(regions).items():
     nt = len(lithk)
 
     # time loop
+    if flg_A20_cumul:
+        H_prev = H0.copy()
+        B_prev = B0.copy()
+        S_prev = S0.copy()
+        A20_cumsum = 0.0
+
     for n in range(0, nt):
 
         H = lithk[n,:,:] * maxmask1 * iaf2GIC
@@ -181,7 +190,13 @@ for regionName, region in vars(regions).items():
 
         VAF_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B0, S0, S0, A, c))
         G20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
-        A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B0, S0, S0, A, c))
+        if flg_A20_cumul:
+            A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B_prev, S_prev, S_prev, A, c)
+            A20_list.append(A20_cumsum)
+            H_prev = H.copy()
+            B_prev = B.copy()
+        else:
+            A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B0, S0, S0, A, c))
         Vtot_list.append(slc_vaf.get_slc_vtot(H0, H, A, c))
         Vgr_list.append(slc_vaf.get_slc_vgr(H0, H, B0, B, S0, S0, A, c))
         Vfl_list.append(slc_vaf.get_slc_vfl(H0, H, B0, B, S0, S0, A, c))
