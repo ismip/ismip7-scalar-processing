@@ -5,9 +5,9 @@
 addpath('/nird/services/software/betzy/sw_rl9/software/MATLAB/2024a/toolbox/matlab/matlab_sci/netcdf'); % ncread/nccreate/ncwrite/ncwriteatt
 
 % User settings
-lab      = 'ISMIP7';
-model    = 'TEST';
-exp      = 'exp0';
+lab      = 'VUW';
+model    = 'PISM1';
+exp      = 'expAE04';
 histref  = 'historical'; % last year of historical is used as SL reference
 res      = '08';
 % Path to generic data
