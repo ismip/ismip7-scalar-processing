@@ -15,9 +15,9 @@ model=CISM08-MAR312-p50
 exp=historical
 res=08
 # Path to generic data
-datapath=../../../Data/GrIS
+datapath=../Data/GrIS
 # Path to model output
-modelpath=../../../Models/GrIS
+modelpath=../Models/GrIS
 # Path for prcessing
 procpath=./proc
 # Path for resulting scalar files

@@ -18,34 +18,24 @@ In addition to model output, the scripts require masks and area factors availabl
 
 ## Directory structure
 
-The `Data/` and `Models/` directories for AIS and GrIS live **one level above the repository root**. MINI data lives at the repository root.
+By default, `Data/` and `Models/` are expected at the repository root. Any location on the file system can be used instead via the `--datapath` and `--modelpath` command-line options.
 
 ```
-../                                              # one level above repo
-├── Data/
-│   ├── AIS/                                     # AIS masks and area factors
-│   └── GrIS/                                    # GrIS masks and area factors
-└── Models/
-    ├── AIS/
-    │   └── {lab}/{model}/{exp}_{res}/           # AIS model output
-    └── GrIS/
-        └── {lab}/{model}/{exp}_{res}/           # GrIS model output
-
 ismip7-scalar-processing/                        # repository root
 ├── slc/                                         # shared SLC computation package
-├── AIS/
-│   ├── python/scalars_AIS.py
-│   └── matlab/scalars_AIS.m
-├── GrIS/
-│   ├── python/scalars_GrIS.py
-│   ├── matlab/scalars_GrIS.m
-│   └── nco/scalars_GrIS.sh
+├── python/scalars.py                            # AIS + GrIS (--region flag)
+├── matlab/scalars.m                             # AIS + GrIS (region variable)
+├── nco/scalars_GrIS.sh                          # GrIS NCO/bash implementation
 ├── MINI/                                        # lightweight test suite
 │   └── python/
-├── Data/                                        # MINI masks and area factors
+├── Data/                                        # default location for masks and area factors
+│   ├── AIS/
+│   ├── GrIS/
 │   ├── MINI0/
 │   └── MINI1/
-├── Models/                                      # MINI model output
+├── Models/                                      # default location for model output
+│   ├── AIS/{lab}/{model}/{exp}_{res}/
+│   ├── GrIS/{lab}/{model}/{exp}_{res}/
 │   └── MINI/ISMIP7/{MINI0,MINI1}/{exp}/
 └── test/
     ├── AIS/compare_outputs.py
@@ -54,30 +44,37 @@ ismip7-scalar-processing/                        # repository root
 
 ## Running the scripts
 
-Before running, set the user configuration at the top of each script (`lab`, `model`, `exp`, `res`, paths, flags).
+All scripts accept CLI arguments; the default settings match the NORCE/CISM08-MAR312-p50 (GrIS) and VUW/PISM1 (AIS) reference configurations.
 
 ### Python (primary)
 
 ```bash
-cd AIS/python && conda run -n nc python3 scalars_AIS.py
-cd GrIS/python && conda run -n nc python3 scalars_GrIS.py
+cd python
+conda run -n nc python3 scalars.py --region AIS
+conda run -n nc python3 scalars.py --region GrIS
+conda run -n nc python3 scalars.py --region AIS --lab ISMIP7 --model TEST --exp exp0 --ref historical
 ```
+
+Key arguments: `--region {AIS,GrIS}` (required), `--lab`, `--model`, `--exp`, `--ref`, `--refyear`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
 
 Output is written to `./output/` relative to the script directory.
 
 ### MATLAB
 
 ```bash
-cd AIS/matlab && matlab -nodisplay -nosplash -r "run('scalars_AIS.m'); exit"
-cd GrIS/matlab && matlab -nodisplay -nosplash -r "run('scalars_GrIS.m'); exit"
+cd matlab
+matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
+matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
+
+Set workspace variables before `run()` to override any default (`lab`, `model`, `exp`, `ref`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
 
 ### NCO/bash (GrIS only)
 
 First create the model-specific parameter file, then run the main script:
 
 ```bash
-cd GrIS/nco
+cd nco
 bash set_params.sh
 bash scalars_GrIS.sh
 ```
@@ -113,7 +110,7 @@ The `slc/` package implements three sea-level contribution methods:
 |--------|-------------|
 | `slc_vaf` | Volume Above Flotation — ISMIP6 method, freshwater conversion |
 | `slc_G2020` | [Goelzer et al. 2020 (TC)](https://doi.org/10.5194/tc-14-833-2020) — adds potential ocean volume and density corrections |
-| `slc_A2020` | [Adhikari et al. 2020 (TC)](https://doi.org/10.5194/tc-14-833-2020) — absolute reference frame with grounding-line migration |
+| `slc_A2020` | [Adhikari et al. 2020 (TC)](https://doi.org/10.5194/tc-14-2819-2020) — absolute reference frame with grounding-line migration |
 
 Three volume diagnostics are also computed (total, grounded, floating ice volume change).
 
@@ -129,7 +126,3 @@ cd test/GrIS && conda run -n nc python3 compare_outputs.py
 ```
 
 Expected tolerance: < 1 × 10⁻¹⁰ m.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
