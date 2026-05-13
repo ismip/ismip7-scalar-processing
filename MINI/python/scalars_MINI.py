@@ -10,29 +10,38 @@ import netCDF4 as nc
 import numpy as np
 from types import SimpleNamespace
 
-# SL methods
 from slc import slc_vaf
 from slc import slc_G2020
 from slc import slc_A2020
 from slc.sl_constants import RHOI, RHOSW, RHOFW, AO
 
+# Data file naming
+FILE_CONFIG = {
+    "af2":    "af2_{model}_vCDO.nc",
+    "maxmask":"maxmask1_{model}_v0.nc",
+    "gic":    "iaf2_{model}_v0.nc",
+}
+
 # User settings
 parser = argparse.ArgumentParser(description="ISMIP7 MINI scalar processing")
-parser.add_argument("--model", required=True, choices=["MINI0", "MINI1"],
-                    help="MINI variant (MINI0 or MINI1)")
-parser.add_argument("--exp",   required=True,
-                    help="Experiment name (e.g. exp0, expg)")
+parser.add_argument("--lab",       default="ISMIP7",               help="Lab identifier")
+parser.add_argument("--model",     required=True, choices=["MINI0", "MINI1"],
+                                                                    help="MINI variant (MINI0 or MINI1)")
+parser.add_argument("--exp",       required=True,                  help="Experiment name (e.g. exp0, expg)")
+parser.add_argument("--ref",       default=None,                   help="Reference experiment; if omitted, uses first timestep of exp")
+parser.add_argument("--refyear",   type=int, default=None,         help="Year to use as SLC reference (default: last timestep of ref experiment)")
+parser.add_argument("--res",       default=None,                   help="Resolution (not used in MINI file naming)")
+parser.add_argument("--datapath",  default=None,                   help="Path to generic data (default: ../../Data/<model>)")
+parser.add_argument("--modelpath", default=None,                   help="Path to model output (default: ../../Models/MINI/ISMIP7/<model>)")
+parser.add_argument("--outpath",   default="./output",             help="Path for output scalar files")
 args = parser.parse_args()
 
-lab   = "ISMIP7"
-model = args.model
-exp   = args.exp
-# Path to generic data
-datapath  = "../../Data/" + model
-# Path to model output
-modelpath = "../../Models/MINI/ISMIP7/" + model
-# Path for resulting scalar files
-outpath = "./output"
+lab       = args.lab
+model     = args.model
+exp       = args.exp
+datapath  = args.datapath  if args.datapath  else "../../Data/" + model
+modelpath = args.modelpath if args.modelpath else "../../Models/MINI/ISMIP7/" + model
+outpath   = args.outpath
 ## What output to produce
 flg_mm = True   # Integrals on model mask
 flg_bm = False  # IMBIE3 basins
@@ -56,19 +65,10 @@ dx = 600000.0  # m (600 km)
 ################################################################
 # File names and mapping
 
-# area factors
-af2input = datapath + "/af2_" + model + "_vCDO.nc"
-# af2
-
-# Antarctic mask
-mminput = datapath + "/maxmask1_" + model + "_v0.nc"
-# maxmask1
-
-# GIC area factors
-gicinput = datapath + "/iaf2_" + model + "_v0.nc"
-# iaf2
-
-# Output files
+cfg      = FILE_CONFIG
+af2input = datapath + "/" + cfg["af2"].format(model=model)
+mminput  = datapath + "/" + cfg["maxmask"].format(model=model)
+gicinput = datapath + "/" + cfg["gic"].format(model=model)
 file_suffix = "AIS_" + lab + "_" + model + "_" + exp + ".nc"
 
 ####################################################
@@ -77,13 +77,13 @@ file_suffix = "AIS_" + lab + "_" + model + "_" + exp + ".nc"
 # Defined ocean area
 oarea = AO  # m2 (Gregory et al., 2019)
 
-# Prepare Antarctic mask
+# Prepare ice sheet mask
 idat = nc.Dataset(mminput, 'r')
 maxmask1 = idat.variables["maxmask1"][:,:]
 idat.close()
-ais = maxmask1 * 0 + 1  # ais region covers the entire grid
+sheet = maxmask1 * 0 + 1  # sheet region covers the entire grid
 regions = SimpleNamespace()
-regions.mm = ais
+regions.mm = sheet
 
 # Prepare area factors
 idat = nc.Dataset(af2input, 'r')
@@ -112,16 +112,32 @@ idat = nc.Dataset(exppath + "/topg_AIS_" + lab + "_" + model + "_" + exp + ".nc"
 topg = idat.variables["topg"][:,:,:]
 idat.close()
 
-# Reference state: first time step of exp (no separate historical run for MINI)
-lithk_ref = lithk[0, :, :]
-topg_ref  = topg[0,  :, :]
+# Reference experiment
+if args.ref:
+    refpath = modelpath + "/" + args.ref
+    idat = nc.Dataset(refpath + "/lithk_AIS_" + lab + "_" + model + "_" + args.ref + ".nc", 'r')
+    if args.refyear is not None:
+        time_ref = idat.variables["time"]
+        dates = nc.num2date(time_ref[:], time_ref.units, calendar=time_ref.calendar)
+        ref_idx = int(np.where(np.array([d.year for d in dates]) == args.refyear)[0][-1])
+    else:
+        ref_idx = -1
+    lithk_ref = idat.variables["lithk"][ref_idx, :, :]
+    idat.close()
+    idat = nc.Dataset(refpath + "/topg_AIS_" + lab + "_" + model + "_" + args.ref + ".nc", 'r')
+    topg_ref = idat.variables["topg"][ref_idx, :, :]
+    idat.close()
+else:
+    # No separate reference — use first time step of exp
+    lithk_ref = lithk[0, :, :]
+    topg_ref  = topg[0,  :, :]
 
 # Physical constants from sl_constants (no params.nc for MINI)
 c = SimpleNamespace()
-c.RHOI  = RHOI
-c.RHOSW = RHOSW
-c.RHOFW = RHOFW
-c.AO    = oarea
+c.RHOI  = RHOI   # kg/m3
+c.RHOSW = RHOSW  # kg/m3
+c.RHOFW = RHOFW  # kg/m3
+c.AO    = oarea  # m2
 
 # Model masks (loaded for completeness, not used in SLC computation)
 idat = nc.Dataset(exppath + "/sftgif_AIS_" + lab + "_" + model + "_" + exp + ".nc", 'r')
@@ -143,7 +159,6 @@ if verbose:
     print("maxmask1:", maxmask1.shape)
     if flg_GICmask:
         print("iaf2GIC:", iaf2GIC.shape)
-
     print("# Model")
     print("lithk_ref:", lithk_ref.shape)
     print("topg_ref:", topg_ref.shape)
@@ -154,9 +169,9 @@ if verbose:
     print("sftflf:", sftflf.shape)
 
 #############################################################
-# Antarctic wide integrals
+# Ice sheet wide integrals
 
-for regionName, region in vars(regions).items():
+for regionName, region_mask in vars(regions).items():
     print(f"{regionName}")
 
     VAF_list  = []
@@ -172,7 +187,7 @@ for regionName, region in vars(regions).items():
     S0 = topg_ref * 0.0  # Fix sealevel to 0
 
     # Use A for weighting and region masking
-    A = region * af2 * dx**2
+    A = region_mask * af2 * dx**2
 
     nt = len(lithk)
 
@@ -195,7 +210,9 @@ for regionName, region in vars(regions).items():
             A20_list.append(A20_cumsum)
             H_prev = H.copy()
             B_prev = B.copy()
+            S_prev = S_prev  # sea level fixed at 0, no update needed
         else:
+            # A2020 relative to reference state, like G2020 and VAF
             A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B0, S0, S0, A, c))
         Vtot_list.append(slc_vaf.get_slc_vtot(H0, H, A, c))
         Vgr_list.append(slc_vaf.get_slc_vgr(H0, H, B0, B, S0, S0, A, c))
@@ -232,9 +249,9 @@ for regionName, region in vars(regions).items():
     var_Vfl   = ds.createVariable('slc_Vfl',  'float', ('time'), zlib=True)
     # Attributes
     ds.description = file_description
-    var_time.units      = time_units
-    var_time.long_name  = time_long_name
-    var_time.calendar   = time_calendar
+    var_time.units     = time_units
+    var_time.long_name = time_long_name
+    var_time.calendar  = time_calendar
     var_VAF.long_name   = 'Sea level contribution based on Vaf'
     var_VAF.units       = 'm'
     var_G2020.long_name = 'Sea level contribution based on G2020'

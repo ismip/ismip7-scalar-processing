@@ -1,24 +1,33 @@
 % Calculate scalar variables from ISMIP7 3D model output
-% GrIS MATLAB implementation — mirrors scalars_GrIS.py exactly
 % Heiko Goelzer 2026 (heig@norceresearch.no)
 
 addpath('/nird/services/software/betzy/sw_rl9/software/MATLAB/2024a/toolbox/matlab/matlab_sci/netcdf'); % ncread/nccreate/ncwrite/ncwriteatt
 
-% User settings
-lab      = 'NORCE';
-model    = 'CISM08-MAR312-p50';
-exp      = 'historical';
-histref  = 'historical'; % last year of historical is used as SL reference
-res      = '08';
-% Path to generic data
-datapath  = '../../../Data/GrIS';
-% Path to model output
-modelpath = '../../../Models/GrIS';
-% Path for resulting scalar files
-outpath   = './output';
+% User settings — set any of these in the workspace before run() to override defaults
+if ~exist('region',    'var'), region    = 'AIS';       end
+if ~exist('ref',       'var'), ref       = 'historical'; end
+if ~exist('refyear',   'var'), refyear   = [];           end  % [] = last timestep of ref
+if ~exist('res',       'var'), res       = '08';         end
+if ~exist('outpath',   'var'), outpath   = './output';   end
+
+% Region-specific defaults
+switch region
+    case 'AIS'
+        def_lab   = 'VUW';   def_model = 'PISM1';             def_exp = 'expAE04';
+    case 'GrIS'
+        def_lab   = 'NORCE'; def_model = 'CISM08-MAR312-p50'; def_exp = 'historical';
+    otherwise
+        error('Unknown region: %s. Choose AIS or GrIS.', region);
+end
+if ~exist('lab',       'var') || isempty(lab),       lab       = def_lab;                end
+if ~exist('model',     'var') || isempty(model),     model     = def_model;              end
+if ~exist('exp',       'var') || isempty(exp),       exp       = def_exp;                end
+if ~exist('datapath',  'var') || isempty(datapath),  datapath  = ['../Data/'   region]; end
+if ~exist('modelpath', 'var') || isempty(modelpath), modelpath = ['../Models/' region]; end
+
 % What output to produce
 flg_mm = true;  % Integrals on model mask
-flg_bm = true;  % IMBIE3-Mouginot basins
+flg_bm = true;  % IMBIE3 basins
 
 % Description for netcdf global attribute
 file_description = 'ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no';
@@ -35,11 +44,19 @@ verbose = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % File names
 
-af2input   = [datapath '/af2_GrIS_'                         res '000m_v1.nc'];
-mminput    = [datapath '/maxmask1_GrIS_'                    res '000m_v1.nc'];
-basininput = [datapath '/basins_GrIS_Mouginot_extended_'    res '000m_v1.nc'];
-gicinput   = [datapath '/iaf2_GIC_GrIS_'                    res '000m_v0.nc'];
-file_suffix = ['GrIS_' lab '_' model '_' exp '_' res '000m.nc'];
+switch region
+    case 'AIS'
+        af2input   = [datapath '/af2_AIS_'                            res '000m_v1.nc'];
+        mminput    = [datapath '/maxmask1_AIS_'                       res '000m_v0.nc'];
+        basininput = [datapath '/basins_regions_AIS_Rignot_extended_' res '000m_v1.nc'];
+        gicinput   = [datapath '/iaf2_GIC_AIS_'                       res '000m_v0.nc'];
+    case 'GrIS'
+        af2input   = [datapath '/af2_GrIS_'                           res '000m_v1.nc'];
+        mminput    = [datapath '/maxmask1_GrIS_'                      res '000m_v1.nc'];
+        basininput = [datapath '/basins_GrIS_Mouginot_extended_'      res '000m_v1.nc'];
+        gicinput   = [datapath '/iaf2_GIC_GrIS_'                      res '000m_v0.nc'];
+end
+file_suffix = [region '_' lab '_' model '_' exp '_' res '000m.nc'];
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare generic data
@@ -47,26 +64,61 @@ file_suffix = ['GrIS_' lab '_' model '_' exp '_' res '000m.nc'];
 % Defined ocean area
 oarea = 3.625e14; % m2 (Gregory et al., 2019)
 
-% Greenland mask
+% Ice sheet mask
 maxmask1 = double(ncread(mminput, 'maxmask1')); % (nx, ny)
-gris = maxmask1 * 0 + 1; % full grid
-regions = struct('mm', gris);
+sheet = maxmask1 * 0 + 1; % full grid
+regions = struct('mm', sheet);
 
-% IMBIE3 Mouginot masks, basins: 1-NO 2-NE 3-CE 4-SE 5-SW 6-CW 7-NW
+% Basin masks
 if flg_bm
-    basinid      = double(ncread(basininput, 'basins'));
-    regions.no   = double(basinid == 1);
-    regions.ne   = double(basinid == 2);
-    regions.ce   = double(basinid == 3);
-    regions.se   = double(basinid == 4);
-    regions.sw   = double(basinid == 5);
-    regions.cw   = double(basinid == 6);
-    regions.nw   = double(basinid == 7);
-    if verbose
-        gristest = regions.no + regions.ne + regions.ce + regions.se + ...
-                   regions.sw + regions.cw + regions.nw;
-        fprintf('gris sum=%g  basin sum=%g  nx*ny=%d\n', ...
-                sum(gris(:)), sum(gristest(:)), numel(gris));
+    switch region
+        case 'AIS'
+            % IMBIE3 regions: 1=WAIS, 2=EAIS, 3=PINA
+            regionid     = double(ncread(basininput, 'regions'));
+            regions.wais = double(regionid == 1);
+            regions.eais = double(regionid == 2);
+            regions.pina = double(regionid == 3);
+            % IMBIE3 basins 1-18
+            basinid      = double(ncread(basininput, 'basins'));
+            regions.r01  = double(basinid ==  1);
+            regions.r02  = double(basinid ==  2);
+            regions.r03  = double(basinid ==  3);
+            regions.r04  = double(basinid ==  4);
+            regions.r05  = double(basinid ==  5);
+            regions.r06  = double(basinid ==  6);
+            regions.r07  = double(basinid ==  7);
+            regions.r08  = double(basinid ==  8);
+            regions.r09  = double(basinid ==  9);
+            regions.r10  = double(basinid == 10);
+            regions.r11  = double(basinid == 11);
+            regions.r12  = double(basinid == 12);
+            regions.r13  = double(basinid == 13);
+            regions.r14  = double(basinid == 14);
+            regions.r15  = double(basinid == 15);
+            regions.r16  = double(basinid == 16);
+            regions.r17  = double(basinid == 17);
+            regions.r18  = double(basinid == 18);
+            if verbose
+                sheettest = regions.wais + regions.eais + regions.pina;
+                fprintf('sheet sum=%g  region sum=%g  nx*ny=%d\n', ...
+                        sum(sheet(:)), sum(sheettest(:)), numel(sheet));
+            end
+        case 'GrIS'
+            % IMBIE3 Mouginot basins: 1-NO 2-NE 3-CE 4-SE 5-SW 6-CW 7-NW
+            basinid    = double(ncread(basininput, 'basins'));
+            regions.no = double(basinid == 1);
+            regions.ne = double(basinid == 2);
+            regions.ce = double(basinid == 3);
+            regions.se = double(basinid == 4);
+            regions.sw = double(basinid == 5);
+            regions.cw = double(basinid == 6);
+            regions.nw = double(basinid == 7);
+            if verbose
+                sheettest = regions.no + regions.ne + regions.ce + regions.se + ...
+                            regions.sw + regions.cw + regions.nw;
+                fprintf('sheet sum=%g  basin sum=%g  nx*ny=%d\n', ...
+                        sum(sheet(:)), sum(sheettest(:)), numel(sheet));
+            end
     end
 end
 
@@ -83,7 +135,7 @@ end
 
 exppath = [modelpath '/' lab '/' model '/' exp '_' res];
 
-lithk_file = [exppath '/lithk_GrIS_' lab '_' model '_' exp '.nc'];
+lithk_file = [exppath '/lithk_' region '_' lab '_' model '_' exp '.nc'];
 lithk      = double(ncread(lithk_file, 'lithk')); % (nx, ny, nt)
 time_model = double(ncread(lithk_file, 'time'));
 
@@ -100,15 +152,20 @@ for i = 1:length(time_info.Attributes)
     end
 end
 
-topg_file = [exppath '/topg_GrIS_' lab '_' model '_' exp '.nc'];
-topg      = double(ncread(topg_file, 'topg')); % (nx, ny, nt)
+topg = double(ncread([exppath '/topg_' region '_' lab '_' model '_' exp '.nc'], 'topg')); % (nx, ny, nt)
 
-% Historical reference: use last time step
-histrefpath  = [modelpath '/' lab '/' model '/' histref '_' res];
-lithk_ref_all = double(ncread([histrefpath '/lithk_GrIS_' lab '_' model '_' histref '.nc'], 'lithk'));
-lithk_ref     = lithk_ref_all(:,:,end); % (nx, ny)
-topg_ref_all  = double(ncread([histrefpath '/topg_GrIS_'  lab '_' model '_' histref '.nc'], 'topg'));
-topg_ref      = topg_ref_all(:,:,end);  % (nx, ny)
+% Reference experiment
+refpath        = [modelpath '/' lab '/' model '/' ref '_' res];
+ref_lithk_file = [refpath '/lithk_' region '_' lab '_' model '_' ref '.nc'];
+lithk_ref_all  = double(ncread(ref_lithk_file, 'lithk'));
+topg_ref_all   = double(ncread([refpath '/topg_' region '_' lab '_' model '_' ref '.nc'], 'topg'));
+if ~isempty(refyear)
+    ref_idx = find_year_idx(ref_lithk_file, 'time', refyear);
+else
+    ref_idx = size(lithk_ref_all, 3); % last timestep
+end
+lithk_ref = lithk_ref_all(:,:,ref_idx);
+topg_ref  = topg_ref_all(:,:,ref_idx);
 
 % Model density parameters
 params_file = [modelpath '/' lab '/' model '/params.nc'];
@@ -118,9 +175,9 @@ c.RHOFW = double(ncread(params_file, 'rhof'));
 c.AO    = oarea;
 
 % Model masks (loaded for completeness; not used in SLC computation)
-sftgif = double(ncread([exppath '/sftgif_GrIS_' lab '_' model '_' exp '.nc'], 'sftgif'));
-sftgrf = double(ncread([exppath '/sftgrf_GrIS_' lab '_' model '_' exp '.nc'], 'sftgrf'));
-sftflf = double(ncread([exppath '/sftflf_GrIS_' lab '_' model '_' exp '.nc'], 'sftflf'));
+sftgif = double(ncread([exppath '/sftgif_' region '_' lab '_' model '_' exp '.nc'], 'sftgif'));
+sftgrf = double(ncread([exppath '/sftgrf_' region '_' lab '_' model '_' exp '.nc'], 'sftgrf'));
+sftflf = double(ncread([exppath '/sftflf_' region '_' lab '_' model '_' exp '.nc'], 'sftflf'));
 
 if verbose
     fprintf('# Generic\n');
@@ -141,23 +198,24 @@ if verbose
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Greenland and basin wide integrals
+% Ice sheet and basin wide integrals
 
 regionNames = fieldnames(regions);
 nt = size(lithk, 3);
 
 for ireg = 1:length(regionNames)
-    regionName = regionNames{ireg};
-    region     = regions.(regionName);
+    regionName  = regionNames{ireg};
+    region_mask = regions.(regionName);
     fprintf('%s\n', regionName);
 
     % Reference state
     H0 = lithk_ref .* maxmask1 .* iaf2GIC;
     B0 = topg_ref;
+    % TODO clarify if S0=0 is correct for all models
     S0 = topg_ref * 0.0; % sea level fixed at 0
 
     % Area weighting and basin masking
-    A = region .* af2 .* (str2double(res) * 1000.0)^2;
+    A = region_mask .* af2 .* (str2double(res) * 1000.0)^2;
 
     sl_VAF = zeros(nt, 1);
     sl_G20 = zeros(nt, 1);
@@ -174,6 +232,7 @@ for ireg = 1:length(regionNames)
         H = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
         B = topg(:,:,n);
 
+        % TODO check potential issues with partial masks
         sl_VAF(n) = get_slc_vaf(H0, H, B0, B0, S0, S0, A, c);
         sl_G20(n) = get_slc_G2020(H0, H, B0, B, A, c);
 
@@ -213,16 +272,16 @@ for ireg = 1:length(regionNames)
     ncwrite(scfile, 'slc_G2020', sl_G20(:));
     ncwrite(scfile, 'slc_A2020', sl_A20(:));
 
-    ncwriteatt(scfile, '/',        'description', file_description);
-    ncwriteatt(scfile, 'time',     'units',        time_units);
-    ncwriteatt(scfile, 'time',     'long_name',    time_long_name);
-    ncwriteatt(scfile, 'time',     'calendar',     time_calendar);
-    ncwriteatt(scfile, 'slc_VAF',  'long_name',    'Sea level contribution based on Vaf');
-    ncwriteatt(scfile, 'slc_VAF',  'units',        'm');
-    ncwriteatt(scfile, 'slc_G2020','long_name',    'Sea level contribution based on G2020');
-    ncwriteatt(scfile, 'slc_G2020','units',        'm');
-    ncwriteatt(scfile, 'slc_A2020','long_name',    'Sea level contribution based on A2020');
-    ncwriteatt(scfile, 'slc_A2020','units',        'm');
+    ncwriteatt(scfile, '/',         'description', file_description);
+    ncwriteatt(scfile, 'time',      'units',        time_units);
+    ncwriteatt(scfile, 'time',      'long_name',    time_long_name);
+    ncwriteatt(scfile, 'time',      'calendar',     time_calendar);
+    ncwriteatt(scfile, 'slc_VAF',   'long_name',    'Sea level contribution based on Vaf');
+    ncwriteatt(scfile, 'slc_VAF',   'units',        'm');
+    ncwriteatt(scfile, 'slc_G2020', 'long_name',    'Sea level contribution based on G2020');
+    ncwriteatt(scfile, 'slc_G2020', 'units',        'm');
+    ncwriteatt(scfile, 'slc_A2020', 'long_name',    'Sea level contribution based on A2020');
+    ncwriteatt(scfile, 'slc_A2020', 'units',        'm');
 
     fprintf('Created file %s\n', scfile);
 end
@@ -316,4 +375,38 @@ function slc = get_slc_A2020(H0, H, B0, B, S0, S, A, c)
     HS = HM + HV;
     % last paragraph before Sec. 3.3
     slc = -c.RHOI/c.RHOFW * sum(HS .* A, 'all') / c.AO;
+end
+
+
+% ---- Helper: find time index matching a calendar year ----
+
+function idx = find_year_idx(ncfile, varname, target_year)
+% Return the last index whose calendar year equals target_year.
+% Handles 'days since' and 'years since' time units.
+    t    = double(ncread(ncfile, varname));
+    info = ncinfo(ncfile, varname);
+    units = '';
+    for k = 1:length(info.Attributes)
+        if strcmp(info.Attributes(k).Name, 'units')
+            units = info.Attributes(k).Value;
+            break;
+        end
+    end
+    tok = regexp(units, 'since\s+(\d{4})', 'tokens');
+    if isempty(tok)
+        error('Cannot parse origin year from time units: %s', units);
+    end
+    origin_year = str2double(tok{1}{1});
+    if contains(units, 'day')
+        yr = floor(origin_year + t / 365.25);
+    elseif contains(units, 'year')
+        yr = floor(origin_year + t);
+    else
+        error('Unsupported time unit: %s', units);
+    end
+    hits = find(yr == target_year);
+    if isempty(hits)
+        error('Year %d not found in %s:%s', target_year, ncfile, varname);
+    end
+    idx = hits(end);
 end
