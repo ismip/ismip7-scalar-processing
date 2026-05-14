@@ -73,7 +73,7 @@ file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch
 flg_GICmask = True  # [Default True!]
 
 # A2020: stepwise cumulative (True, default) vs. all relative to reference (False)
-flg_A20_cumul = True
+flg_A20_cumul = False
 
 # More output
 verbose = False
@@ -249,7 +249,8 @@ for regionName, region_mask in vars(regions).items():
     VAF_list = []
     G20_list = []
     A20_list = []
-
+    G0_list = []
+    
     # Reference state
     H0 = lithk_ref * maxmask1 * iaf2GIC
     B0 = topg_ref
@@ -267,6 +268,7 @@ for regionName, region_mask in vars(regions).items():
         B_prev = B0.copy()
         S_prev = S0.copy()
         A20_cumsum = 0.0
+        G0_cumsum = 0.0
 
     for n in range(0, nt):
 
@@ -279,16 +281,20 @@ for regionName, region_mask in vars(regions).items():
         if flg_A20_cumul:
             A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S_prev, S_prev, A, c)
             A20_list.append(A20_cumsum)
+            G0_cumsum += slc_G2020.get_slc_G2020(H_prev, H, B_prev, B_prev, A, c)
+            G0_list.append(G0_cumsum)
             H_prev = H.copy()
             B_prev = B.copy()
             S_prev = S_prev  # sea level fixed at 0, no update needed
         else:
             # A2020 relative to reference state, like G2020 and VAF
             A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
+            G0_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B0, A, c))
 
     sl_VAF = np.array(VAF_list)
     sl_G20 = np.array(G20_list)
     sl_A20 = np.array(A20_list)
+    sl_G0 = np.array(G0_list)
 
     if verbose:
         print(sl_VAF)
@@ -306,6 +312,7 @@ for regionName, region_mask in vars(regions).items():
     var_VAF   = ds.createVariable('slc_VAF',  'float', ('time'), zlib=True)
     var_G2020 = ds.createVariable('slc_G2020','float', ('time'), zlib=True)
     var_A2020 = ds.createVariable('slc_A2020','float', ('time'), zlib=True)
+    var_G0 = ds.createVariable('slc_G0','float', ('time'), zlib=True)
     # Attributes
     ds.description = file_description
     var_time.units     = time_units
@@ -317,11 +324,14 @@ for regionName, region_mask in vars(regions).items():
     var_G2020.units     = 'm'
     var_A2020.long_name = 'Sea level contribution based on A2020'
     var_A2020.units     = 'm'
+    var_G0.long_name = 'Sea level contribution based on G2020 with fixed bedrock'
+    var_G0.units     = 'm'
     # assign data
     var_time[:]  = time_model
     var_VAF[:]   = sl_VAF[:]
     var_G2020[:] = sl_G20[:]
     var_A2020[:] = sl_A20[:]
+    var_G0[:] = sl_G0[:]
 
     ds.close()
     print("Created file ", scfile)
