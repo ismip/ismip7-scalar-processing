@@ -73,7 +73,7 @@ file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch
 flg_GICmask = True  # [Default True!]
 
 # A2020: stepwise cumulative (True, default) vs. all relative to reference (False)
-flg_A20_cumul = False
+flg_A20_cumul = True
 
 # More output
 verbose = False

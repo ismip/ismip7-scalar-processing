@@ -180,7 +180,8 @@ for regionName, region_mask in vars(regions).items():
     Vtot_list = []
     Vgr_list  = []
     Vfl_list  = []
-
+    G0_list   = []
+    
     # Reference state
     H0 = lithk_ref * maxmask1 * iaf2GIC
     B0 = topg_ref
@@ -197,6 +198,7 @@ for regionName, region_mask in vars(regions).items():
         B_prev = B0.copy()
         S_prev = S0.copy()
         A20_cumsum = 0.0
+        G0_cumsum = 0.0
 
     for n in range(0, nt):
 
@@ -205,18 +207,22 @@ for regionName, region_mask in vars(regions).items():
 
         VAF_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
         G20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
+        Vtot_list.append(slc_vaf.get_slc_vtot(H0, H, A, c))
+        Vgr_list.append(slc_vaf.get_slc_vgr(H0, H, B0, B, S0, S0, A, c))
+        Vfl_list.append(slc_vaf.get_slc_vfl(H0, H, B0, B, S0, S0, A, c))
         if flg_A20_cumul:
             A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S_prev, S_prev, A, c)
             A20_list.append(A20_cumsum)
+            G0_cumsum += slc_G2020.get_slc_G2020(H_prev, H, B_prev, B_prev, A, c)
+            G0_list.append(G0_cumsum)
             H_prev = H.copy()
             B_prev = B.copy()
             S_prev = S_prev  # sea level fixed at 0, no update needed
         else:
             # A2020 relative to reference state, like G2020 and VAF
             A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
-        Vtot_list.append(slc_vaf.get_slc_vtot(H0, H, A, c))
-        Vgr_list.append(slc_vaf.get_slc_vgr(H0, H, B0, B, S0, S0, A, c))
-        Vfl_list.append(slc_vaf.get_slc_vfl(H0, H, B0, B, S0, S0, A, c))
+            G0_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B0, A, c))
+            
 
     sl_VAF  = np.array(VAF_list)
     sl_G20  = np.array(G20_list)
@@ -224,6 +230,7 @@ for regionName, region_mask in vars(regions).items():
     sl_Vtot = np.array(Vtot_list)
     sl_Vgr  = np.array(Vgr_list)
     sl_Vfl  = np.array(Vfl_list)
+    sl_G0   = np.array(G0_list)
 
     if verbose:
         print(sl_VAF)
@@ -232,6 +239,7 @@ for regionName, region_mask in vars(regions).items():
         print(sl_Vtot)
         print(sl_Vgr)
         print(sl_Vfl)
+        print(sl_G0)
 
     ###############################################
     # Write netcdf file
@@ -247,6 +255,7 @@ for regionName, region_mask in vars(regions).items():
     var_Vtot  = ds.createVariable('slc_Vtot', 'float', ('time'), zlib=True)
     var_Vgr   = ds.createVariable('slc_Vgr',  'float', ('time'), zlib=True)
     var_Vfl   = ds.createVariable('slc_Vfl',  'float', ('time'), zlib=True)
+    var_G0    = ds.createVariable('slc_G0',   'float', ('time'), zlib=True)
     # Attributes
     ds.description = file_description
     var_time.units     = time_units
@@ -264,6 +273,8 @@ for regionName, region_mask in vars(regions).items():
     var_Vgr.units       = 'm'
     var_Vfl.long_name   = 'Sea level contribution based on floating ice volume change'
     var_Vfl.units       = 'm'
+    var_G0.long_name    = 'Sea level contribution based on G2020 with fixed bedrock'
+    var_G0.units        = 'm'
     # assign data
     var_time[:]  = time_model
     var_VAF[:]   = sl_VAF[:]
@@ -272,6 +283,7 @@ for regionName, region_mask in vars(regions).items():
     var_Vtot[:]  = sl_Vtot[:]
     var_Vgr[:]   = sl_Vgr[:]
     var_Vfl[:]   = sl_Vfl[:]
+    var_G0[:]    = sl_G0[:]
 
     ds.close()
     print("Created file ", scfile)

@@ -10,7 +10,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(SCRIPT_DIR)
 
 models = ["MINI0", "MINI1"]
-exps   = ["exp0", "expg"]
+exps   = ["exp0", "expc", "expg"]
 
 for exp in exps:
     for model in models:
@@ -35,11 +35,13 @@ for f in files:
     vtot = ds.variables["slc_Vtot"][:]
     vgr  = ds.variables["slc_Vgr"][:]
     vfl  = ds.variables["slc_Vfl"][:]
+    g0   = ds.variables["slc_G0"][:]
     print(f)
     print("  nt=%d  t=%.4f-%.4f %s" % (len(t), t[0], t[-1], ds.variables["time"].units))
     print("  VAF  : %.4f -> %.4f mm" % (vaf[0]*1000,  vaf[-1]*1000))
     print("  G2020: %.4f -> %.4f mm" % (g20[0]*1000,  g20[-1]*1000))
     print("  A2020: %.4f -> %.4f mm" % (a20[0]*1000,  a20[-1]*1000))
+    print("  G0   : %.4f -> %.4f mm" % (g0[0]*1000,   g0[-1]*1000))
     print("  Vtot : %.4f -> %.4f mm" % (vtot[0]*1000, vtot[-1]*1000))
     print("  Vgr  : %.4f -> %.4f mm" % (vgr[0]*1000,  vgr[-1]*1000))
     print("  Vfl  : %.4f -> %.4f mm" % (vfl[0]*1000,  vfl[-1]*1000))
