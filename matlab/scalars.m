@@ -27,7 +27,7 @@ if ~exist('modelpath', 'var') || isempty(modelpath), modelpath = ['../Models/' r
 
 % What output to produce
 flg_mm = true;  % Integrals on model mask
-flg_bm = true;  % IMBIE3 basins
+flg_bm = false;  % IMBIE3 basins
 
 % Description for netcdf global attribute
 file_description = 'ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no';
@@ -233,18 +233,18 @@ for ireg = 1:length(regionNames)
         B = topg(:,:,n);
 
         % TODO check potential issues with partial masks
-        sl_VAF(n) = get_slc_vaf(H0, H, B0, B0, S0, S0, A, c);
+        sl_VAF(n) = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
         sl_G20(n) = get_slc_G2020(H0, H, B0, B, A, c);
 
         if flg_A20_cumul
             % Stepwise: increment from previous to current timestep
-            A20_cumsum = A20_cumsum + get_slc_A2020(H_prev, H, B_prev, B_prev, S_prev, S_prev, A, c);
+            A20_cumsum = A20_cumsum + get_slc_A2020(H_prev, H, B_prev, B, S_prev, S_prev, A, c);
             sl_A20(n)  = A20_cumsum;
             H_prev = H; % MATLAB assignment copies values
             B_prev = B;
             % S_prev stays at S0 (zeros) — never updated, same as Python
         else
-            sl_A20(n) = get_slc_A2020(H0, H, B0, B0, S0, S0, A, c);
+            sl_A20(n) = get_slc_A2020(H0, H, B0, B, S0, S0, A, c);
         end
     end
 

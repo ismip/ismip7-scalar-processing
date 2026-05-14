@@ -203,17 +203,17 @@ for regionName, region_mask in vars(regions).items():
         H = lithk[n,:,:] * maxmask1 * iaf2GIC
         B = topg[n,:,:]
 
-        VAF_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B0, S0, S0, A, c))
+        VAF_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
         G20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
         if flg_A20_cumul:
-            A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B_prev, S_prev, S_prev, A, c)
+            A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S_prev, S_prev, A, c)
             A20_list.append(A20_cumsum)
             H_prev = H.copy()
             B_prev = B.copy()
             S_prev = S_prev  # sea level fixed at 0, no update needed
         else:
             # A2020 relative to reference state, like G2020 and VAF
-            A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B0, S0, S0, A, c))
+            A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
         Vtot_list.append(slc_vaf.get_slc_vtot(H0, H, A, c))
         Vgr_list.append(slc_vaf.get_slc_vgr(H0, H, B0, B, S0, S0, A, c))
         Vfl_list.append(slc_vaf.get_slc_vfl(H0, H, B0, B, S0, S0, A, c))
