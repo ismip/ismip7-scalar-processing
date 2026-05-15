@@ -26,8 +26,6 @@ ismip7-scalar-processing/                        # repository root
 ├── python/scalars.py                            # AIS + GrIS (--region flag)
 ├── matlab/scalars.m                             # AIS + GrIS (region variable)
 ├── nco/scalars_GrIS.sh                          # GrIS NCO/bash implementation
-├── MINI/                                        # lightweight test suite
-│   └── python/
 ├── Data/                                        # default location for masks and area factors
 │   ├── AIS/
 │   ├── GrIS/
@@ -37,9 +35,22 @@ ismip7-scalar-processing/                        # repository root
 │   ├── AIS/{lab}/{model}/{exp}_{res}/
 │   ├── GrIS/{lab}/{model}/{exp}_{res}/
 │   └── MINI/ISMIP7/{MINI0,MINI1}/{exp}/
-└── test/
-    ├── AIS/compare_outputs.py
-    └── GrIS/compare_outputs.py
+└── manual-tests/
+    ├── compare_outputs.py                       # Python vs MATLAB comparison (--region filter)
+    ├── test_histout.py                          # integration test for --histout
+    ├── test_refyear.py                          # integration test for --refyear
+    └── MINI/                                   # lightweight MINI test suite
+        ├── scalars_MINI.py
+        ├── run_MINI.py
+        ├── output/
+        └── setup/                              # experiment generation and remapping tools
+            ├── derive_exp0.py
+            ├── check_masks.py
+            ├── ground.sh
+            ├── interpolate.sh
+            ├── remapCDO.sh
+            ├── gdf_ISMIP7_MINI0.txt
+            └── gdf_ISMIP7_MINI1.txt
 ```
 
 ## Running the scripts
@@ -55,7 +66,7 @@ conda run -n nc python3 scalars.py --region GrIS
 conda run -n nc python3 scalars.py --region AIS --lab ISMIP7 --model TEST --exp exp0 --hist historical
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--lab`, `--model`, `--exp`, `--hist`, `--refyear`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--lab`, `--model`, `--exp`, `--hist`, `--refyear`, `--histout`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
 
 Output is written to `./output/` relative to the script directory.
 
@@ -84,7 +95,7 @@ bash scalars_GrIS.sh
 The MINI suite provides lightweight test cases on a coarse 11×11 grid (600 km pixels) for rapid validation.
 
 ```bash
-cd MINI/python
+cd manual-tests/MINI
 
 # Run a single case
 conda run -n nc python3 scalars_MINI.py --model MINI1 --exp exp0
@@ -92,6 +103,8 @@ conda run -n nc python3 scalars_MINI.py --model MINI1 --exp exp0
 # Run all combinations (MINI0/MINI1 × exp0/expg) and print summary
 conda run -n nc python3 run_MINI.py
 ```
+
+Experiment generation and grid remapping tools live in `manual-tests/MINI/setup/`.
 
 Two grid variants are available:
 
@@ -121,8 +134,17 @@ Ocean area normalization uses `oarea = 3.625 × 10¹⁴ m²` (Gregory et al. 201
 After running both Python and MATLAB versions, compare outputs:
 
 ```bash
-cd test/AIS && conda run -n nc python3 compare_outputs.py
-cd test/GrIS && conda run -n nc python3 compare_outputs.py
+cd manual-tests
+conda run -n nc python3 compare_outputs.py --region AIS
+conda run -n nc python3 compare_outputs.py --region GrIS
 ```
 
 Expected tolerance: < 1 × 10⁻¹⁰ m.
+
+Integration tests for `--histout` and `--refyear` (require `--datapath` and `--modelpath`):
+
+```bash
+cd manual-tests
+conda run -n nc python3 test_histout.py --datapath <path> --modelpath <path>
+conda run -n nc python3 test_refyear.py --datapath <path> --modelpath <path>
+```
