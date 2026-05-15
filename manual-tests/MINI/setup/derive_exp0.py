@@ -5,7 +5,8 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../..'))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, '../../..'))
 
 import argparse
 import datetime
@@ -24,8 +25,8 @@ args = parser.parse_args()
 model = args.model
 exp   = args.exp
 
-srcpath = os.path.join("..", "..", "Models", "MINI", "ISMIP7", model, "exp0")
-dstpath = os.path.join("..", "..", "Models", "MINI", "ISMIP7", model, exp)
+srcpath = os.path.join(SCRIPT_DIR, "..", "..", "..", "Models", "MINI", "ISMIP7", model, "exp0")
+dstpath = os.path.join(SCRIPT_DIR, "..", "..", "..", "Models", "MINI", "ISMIP7", model, exp)
 os.makedirs(dstpath, exist_ok=True)
 
 lab = "ISMIP7"

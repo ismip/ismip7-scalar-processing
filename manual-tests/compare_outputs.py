@@ -1,25 +1,37 @@
 #!/usr/bin/env python3
-"""
-Compare MATLAB and Python AIS scalar output files.
-Run from test/AIS/ after both versions have produced output.
+"""Compare MATLAB and Python scalar output files.
+Run from manual-tests/ after both versions have produced output.
 
-Python output: ../../AIS/python/output/scalars_*_AIS_*.nc
-MATLAB output: ../../AIS/matlab/output/scalars_*_AIS_*.nc
+Python output: ../python/output/scalars_*.nc
+MATLAB output: ../matlab/output/scalars_*.nc
+
+Usage:
+    python compare_outputs.py               # compare all output files
+    python compare_outputs.py --region AIS  # compare only AIS files
+    python compare_outputs.py --region GrIS # compare only GrIS files
 """
 
 import sys
 import os
 import glob
+import argparse
 import numpy as np
 import netCDF4 as nc
 
+parser = argparse.ArgumentParser(description="Compare MATLAB and Python scalar outputs")
+parser.add_argument("--region", choices=["AIS", "GrIS"], default=None,
+                    help="Filter by ice-sheet region (default: compare all files)")
+args = parser.parse_args()
+
 VARS    = ['slc_VAF', 'slc_G2020', 'slc_A2020']
 TOL     = 1e-10  # absolute tolerance in metres
-py_dir  = '../../AIS/python/output'
-mat_dir = '../../AIS/matlab/output'
+py_dir  = '../python/output'
+mat_dir = '../matlab/output'
 
-# Find all Python output files
+# Find Python output files, optionally filtered by region
 py_files = sorted(glob.glob(os.path.join(py_dir, 'scalars_*.nc')))
+if args.region:
+    py_files = [f for f in py_files if args.region in os.path.basename(f)]
 if not py_files:
     print(f'No Python output files found in {py_dir}')
     sys.exit(1)
@@ -39,7 +51,7 @@ for py_file in py_files:
         fail = True
         continue
 
-    region = basename.split('_')[1]  # scalars_<region>_AIS_...
+    region = basename.split('_')[1]  # scalars_<region>_AIS_... or scalars_<region>_GrIS_...
 
     ds_py  = nc.Dataset(py_file,  'r')
     ds_mat = nc.Dataset(mat_file, 'r')

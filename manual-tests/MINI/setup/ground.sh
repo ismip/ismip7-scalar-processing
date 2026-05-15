@@ -1,7 +1,10 @@
 #!/bin/bash
 # make grounded by increasing the bed
 
-m1path=/Users/heig/Desktop/Output/Models/MINI/ISMIP7/MINI1
+SETUP_DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$SETUP_DIR/../../.." && pwd)
+
+m1path=$ROOT/Models/MINI/ISMIP7/MINI1
 
 exp=expg
 

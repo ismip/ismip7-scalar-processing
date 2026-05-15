@@ -5,7 +5,8 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../..'))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, '../../..'))
 
 import argparse
 import numpy as np
@@ -24,7 +25,7 @@ exp   = args.exp
 lab   = "ISMIP7"
 region = "AIS"
 
-exppath = os.path.join("..", "..", "Models", "MINI", "ISMIP7", model, exp)
+exppath = os.path.join(SCRIPT_DIR, "..", "..", "..", "Models", "MINI", "ISMIP7", model, exp)
 suffix  = f"{region}_{lab}_{model}_{exp}"
 
 def load(varname):
