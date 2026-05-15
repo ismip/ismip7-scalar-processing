@@ -5,8 +5,8 @@ addpath('/nird/services/software/betzy/sw_rl9/software/MATLAB/2024a/toolbox/matl
 
 % User settings — set any of these in the workspace before run() to override defaults
 if ~exist('region',    'var'), region    = 'AIS';       end
-if ~exist('ref',       'var'), ref       = 'historical'; end
-if ~exist('refyear',   'var'), refyear   = [];           end  % [] = last timestep of ref
+if ~exist('hist',      'var'), hist      = 'historical'; end
+if ~exist('refyear',   'var'), refyear   = [];           end  % [] = last timestep of hist
 if ~exist('res',       'var'), res       = '08';         end
 if ~exist('outpath',   'var'), outpath   = './output';   end
 
@@ -35,7 +35,7 @@ file_description = 'ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch
 % Options
 % Remove GIC contribution
 flg_GICmask = true; % [Default true!]
-% A2020: stepwise cumulative (true, default) vs. all relative to reference (false)
+% A2020: seamless hist+exp cumulative (true, default) vs. relative to reference (false)
 flg_A20_cumul = true;
 
 % More output
@@ -154,18 +154,37 @@ end
 
 topg = double(ncread([exppath '/topg_' region '_' lab '_' model '_' exp '.nc'], 'topg')); % (nx, ny, nt)
 
-% Reference experiment
-refpath        = [modelpath '/' lab '/' model '/' ref '_' res];
-ref_lithk_file = [refpath '/lithk_' region '_' lab '_' model '_' ref '.nc'];
-lithk_ref_all  = double(ncread(ref_lithk_file, 'lithk'));
-topg_ref_all   = double(ncread([refpath '/topg_' region '_' lab '_' model '_' ref '.nc'], 'topg'));
+% Historical experiment
+histpath        = [modelpath '/' lab '/' model '/' hist '_' res];
+hist_lithk_file = [histpath '/lithk_' region '_' lab '_' model '_' hist '.nc'];
+lithk_hist_all  = double(ncread(hist_lithk_file, 'lithk'));
+topg_hist_all   = double(ncread([histpath '/topg_' region '_' lab '_' model '_' hist '.nc'], 'topg'));
+n_hist          = size(lithk_hist_all, 3);
+
+ref_in_exp  = false;
+ref_idx_exp = [];
 if ~isempty(refyear)
-    ref_idx = find_year_idx(ref_lithk_file, 'time', refyear);
+    [ref_idx, found] = find_year_idx_safe(hist_lithk_file, 'time', refyear);
+    if ~found
+        fprintf('Warning: refyear %d not found in hist experiment ''%s''; searching exp ''%s''\n', refyear, hist, exp);
+        ref_in_exp = true;
+        ref_idx    = n_hist;
+    end
 else
-    ref_idx = size(lithk_ref_all, 3); % last timestep
+    ref_idx = n_hist;  % last timestep (1-based absolute index)
 end
-lithk_ref = lithk_ref_all(:,:,ref_idx);
-topg_ref  = topg_ref_all(:,:,ref_idx);
+lithk_ref = lithk_hist_all(:,:,ref_idx);
+topg_ref  = topg_hist_all(:,:,ref_idx);
+
+% If refyear not found in hist, search exp
+if ref_in_exp
+    [ref_idx_exp, found] = find_year_idx_safe(lithk_file, 'time', refyear);
+    if ~found
+        error('refyear %d not found in hist experiment ''%s'' or exp ''%s''', refyear, hist, exp);
+    end
+    lithk_ref = lithk(:,:,ref_idx_exp);
+    topg_ref  = topg(:,:,ref_idx_exp);
+end
 
 % Model density parameters
 params_file = [modelpath '/' lab '/' model '/params.nc'];
@@ -221,30 +240,63 @@ for ireg = 1:length(regionNames)
     sl_G20 = zeros(nt, 1);
     sl_A20 = zeros(nt, 1);
 
-    if flg_A20_cumul
-        H_prev     = H0;
-        B_prev     = B0;
-        S_prev     = S0;
-        A20_cumsum = 0.0;
-    end
-
+    % ---- VAF and G2020 (always relative to reference state) ----
     for n = 1:nt
-        H = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
-        B = topg(:,:,n);
-
-        % TODO check potential issues with partial masks
+        H         = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
+        B         = topg(:,:,n);
         sl_VAF(n) = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
         sl_G20(n) = get_slc_G2020(H0, H, B0, B, A, c);
+    end
 
-        if flg_A20_cumul
-            % Stepwise: increment from previous to current timestep
-            A20_cumsum = A20_cumsum + get_slc_A2020(H_prev, H, B_prev, B, S_prev, S_prev, A, c);
-            sl_A20(n)  = A20_cumsum;
-            H_prev = H; % MATLAB assignment copies values
-            B_prev = B;
-            % S_prev stays at S0 (zeros) — never updated, same as Python
-        else
+    % ---- A2020 (method-dependent) ----
+    if ~flg_A20_cumul
+        % Relative to reference state at every timestep
+        for n = 1:nt
+            H         = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
+            B         = topg(:,:,n);
             sl_A20(n) = get_slc_A2020(H0, H, B0, B, S0, S0, A, c);
+        end
+    else
+        % Seamless hist+exp cumulative, offset to zero at t_ref
+        if strcmp(exp, hist)
+            lh   = lithk;
+            th   = topg;
+            n_lh = nt;
+        else
+            lh   = lithk_hist_all;
+            th   = topg_hist_all;
+            n_lh = n_hist;
+        end
+        % Hist pre-pass: cumulate from hist[0] forward
+        H_prev     = lh(:,:,1) .* maxmask1 .* iaf2GIC;
+        B_prev     = th(:,:,1);
+        acc        = 0.0;
+        hist_cumul = zeros(n_lh, 1);
+        for n_h = 2:n_lh
+            H_h             = lh(:,:,n_h) .* maxmask1 .* iaf2GIC;
+            B_h             = th(:,:,n_h);
+            acc             = acc + get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c);
+            hist_cumul(n_h) = acc;
+            H_prev          = H_h;
+            B_prev          = B_h;
+        end
+        offset = hist_cumul(ref_idx);
+        if strcmp(exp, hist)
+            sl_A20 = hist_cumul - offset;
+        else
+            raw_exp = zeros(nt, 1);
+            for n = 1:nt
+                H          = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
+                B          = topg(:,:,n);
+                acc        = acc + get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c);
+                raw_exp(n) = acc;
+                H_prev     = H;
+                B_prev     = B;
+            end
+            if ref_in_exp
+                offset = raw_exp(ref_idx_exp);
+            end
+            sl_A20 = raw_exp - offset;
         end
     end
 
@@ -381,7 +433,16 @@ end
 % ---- Helper: find time index matching a calendar year ----
 
 function idx = find_year_idx(ncfile, varname, target_year)
+% Return the last index whose calendar year equals target_year; error if not found.
+    [idx, found] = find_year_idx_safe(ncfile, varname, target_year);
+    if ~found
+        error('Year %d not found in %s:%s', target_year, ncfile, varname);
+    end
+end
+
+function [idx, found] = find_year_idx_safe(ncfile, varname, target_year)
 % Return the last index whose calendar year equals target_year.
+% found=false and idx=0 if target_year is not present.
 % Handles 'days since' and 'years since' time units.
     t    = double(ncread(ncfile, varname));
     info = ncinfo(ncfile, varname);
@@ -406,7 +467,10 @@ function idx = find_year_idx(ncfile, varname, target_year)
     end
     hits = find(yr == target_year);
     if isempty(hits)
-        error('Year %d not found in %s:%s', target_year, ncfile, varname);
+        idx   = 0;
+        found = false;
+    else
+        idx   = hits(end);
+        found = true;
     end
-    idx = hits(end);
 end

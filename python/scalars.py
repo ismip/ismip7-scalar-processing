@@ -43,23 +43,26 @@ parser.add_argument("--region",    required=True, choices=["AIS", "GrIS"],
 parser.add_argument("--lab",       default=None,                   help="Lab identifier")
 parser.add_argument("--model",     default=None,                   help="Model name")
 parser.add_argument("--exp",       default=None,                   help="Experiment name")
-parser.add_argument("--ref",       default="historical",           help="Reference experiment")
-parser.add_argument("--refyear",   type=int, default=None,         help="Year to use as SLC reference (default: last timestep of ref experiment)")
+parser.add_argument("--hist",      default="historical",           help="Historical experiment")
+parser.add_argument("--refyear",   type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
 parser.add_argument("--res",       default="08",                   help="Resolution (e.g. 08 for 8 km)")
 parser.add_argument("--datapath",  default=None,                   help="Path to generic data files (default: ../Data/<region>)")
 parser.add_argument("--modelpath", default=None,                   help="Path to model output (default: ../Models/<region>)")
 parser.add_argument("--outpath",   default="./output",             help="Path for output scalar files")
+parser.add_argument("--histout",   type=int, default=1,
+                                               help="Hist timesteps to prepend to output: 0=none, 1=last only (default), -1=all, N=last N")
 args = parser.parse_args()
 
 region    = args.region
 lab       = args.lab       or DEFAULTS[region]["lab"]
 model     = args.model     or DEFAULTS[region]["model"]
 exp       = args.exp       or DEFAULTS[region]["exp"]
-ref       = args.ref
+hist      = args.hist
 res       = args.res
 datapath  = args.datapath  if args.datapath  else "../Data/" + region
 modelpath = args.modelpath if args.modelpath else "../Models/" + region
 outpath   = args.outpath
+histout   = args.histout
 ## What output to produce
 flg_mm = True  # Integrals on model mask
 flg_bm = False  # IMBIE3 basins
@@ -72,7 +75,7 @@ file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch
 # Remove GIC contribution
 flg_GICmask = True  # [Default True!]
 
-# A2020: stepwise cumulative (True, default) vs. all relative to reference (False)
+# A2020: seamless hist+exp cumulative (True, default) vs. relative to reference (False)
 flg_A20_cumul = True
 
 # More output
@@ -182,21 +185,68 @@ idat = nc.Dataset(exppath + "/topg_" + region + "_" + lab + "_" + model + "_" + 
 topg = idat.variables["topg"][:,:,:]
 idat.close()
 
-# Reference experiment
-refpath = modelpath + "/" + lab + "/" + model + "/" + ref + "_" + res
+# Historical experiment
+histpath = modelpath + "/" + lab + "/" + model + "/" + hist + "_" + res
 # Model geometry
-idat = nc.Dataset(refpath + "/lithk_" + region + "_" + lab + "_" + model + "_" + ref + ".nc", 'r')
+idat = nc.Dataset(histpath + "/lithk_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
+time_ref_var = idat.variables["time"]
+n_hist = len(time_ref_var)
+time_hist = time_ref_var[:]
+ref_in_exp = False
+ref_idx_exp = None
 if args.refyear is not None:
-    time_ref = idat.variables["time"]
-    dates = nc.num2date(time_ref[:], time_ref.units, calendar=time_ref.calendar)
-    ref_idx = int(np.where(np.array([d.year for d in dates]) == args.refyear)[0][-1])
+    dates = nc.num2date(time_ref_var[:], time_ref_var.units, calendar=time_ref_var.calendar)
+    idx_arr = np.where(np.array([d.year for d in dates]) == args.refyear)[0]
+    if len(idx_arr) > 0:
+        ref_idx = int(idx_arr[-1])
+    else:
+        ref_idx = n_hist - 1  # refyear not in hist; will search exp after loading
+        ref_in_exp = True
 else:
-    ref_idx = -1
+    ref_idx = n_hist - 1  # last timestep (absolute index)
+
+# Number of hist timesteps to prepend to output
+if exp == hist:
+    hist_n_out = 0  # full run already output via exp
+elif histout == 0:
+    hist_n_out = 0
+elif histout == -1:
+    hist_n_out = n_hist
+else:
+    if histout > n_hist:
+        print(f"Warning: --histout {histout} exceeds hist length {n_hist}; using all {n_hist} timesteps")
+        hist_n_out = n_hist
+    else:
+        hist_n_out = histout
+hist_start = n_hist - hist_n_out
+
 lithk_ref = idat.variables["lithk"][ref_idx,:,:]
+need_hist = (exp != hist) and flg_A20_cumul
+need_hist_arrays = need_hist or (hist_n_out > 0)
+if need_hist_arrays:
+    lithk_hist = idat.variables["lithk"][:,:,:]
 idat.close()
-idat = nc.Dataset(refpath + "/topg_" + region + "_" + lab + "_" + model + "_" + ref + ".nc", 'r')
+idat = nc.Dataset(histpath + "/topg_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
 topg_ref = idat.variables["topg"][ref_idx,:,:]
+if need_hist_arrays:
+    topg_hist = idat.variables["topg"][:,:,:]
 idat.close()
+
+# For exp==hist, hist arrays are the same as exp arrays
+if exp == hist and flg_A20_cumul:
+    lithk_hist = lithk
+    topg_hist = topg
+
+# If refyear was not found in the hist file, search the exp file
+if ref_in_exp:
+    print(f"Warning: --refyear {args.refyear} not found in hist experiment '{hist}'; searching exp '{exp}'")
+    dates_exp = nc.num2date(time_model, time_units, calendar=time_calendar)
+    idx_arr = np.where(np.array([d.year for d in dates_exp]) == args.refyear)[0]
+    if len(idx_arr) == 0:
+        raise ValueError(f"--refyear {args.refyear} not found in hist experiment '{hist}' or exp '{exp}'")
+    ref_idx_exp = int(idx_arr[-1])
+    lithk_ref = lithk[ref_idx_exp,:,:]
+    topg_ref  = topg[ref_idx_exp,:,:]
 
 # Add model params
 idat = nc.Dataset(modelpath + "/" + lab + "/" + model + "/params.nc", 'r')
@@ -249,6 +299,7 @@ for regionName, region_mask in vars(regions).items():
     VAF_list = []
     G20_list = []
     A20_list = []
+    VAF_hist, G20_hist, A20_hist = [], [], []
 
     # Reference state
     H0 = lithk_ref * maxmask1 * iaf2GIC
@@ -261,34 +312,72 @@ for regionName, region_mask in vars(regions).items():
 
     nt = len(lithk)
 
-    # time loop
-    if flg_A20_cumul:
-        H_prev = H0.copy()
-        B_prev = B0.copy()
-        S_prev = S0.copy()
-        A20_cumsum = 0.0
+    # ---- Hist portion (VAF, G2020, and non-cumulative A2020) ----
+    if hist_n_out > 0:
+        for n in range(hist_start, n_hist):
+            H = lithk_hist[n,:,:] * maxmask1 * iaf2GIC
+            B = topg_hist[n,:,:]
+            VAF_hist.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
+            G20_hist.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
+            if not flg_A20_cumul:
+                A20_hist.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
 
-    for n in range(0, nt):
-
+    # ---- VAF and G2020 (always relative to reference state) ----
+    for n in range(nt):
         H = lithk[n,:,:] * maxmask1 * iaf2GIC
         B = topg[n,:,:]
-
-        # TODO check potential issues with partial masks
         VAF_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
         G20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
-        if flg_A20_cumul:
-            A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S_prev, S_prev, A, c)
-            A20_list.append(A20_cumsum)
-            H_prev = H.copy()
-            B_prev = B.copy()
-            S_prev = S_prev  # sea level fixed at 0, no update needed
-        else:
-            # A2020 relative to reference state, like G2020 and VAF
+
+    # ---- A2020 (method-dependent) ----
+    if not flg_A20_cumul:
+        # Relative to reference state at every timestep
+        for n in range(nt):
+            H = lithk[n,:,:] * maxmask1 * iaf2GIC
+            B = topg[n,:,:]
             A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
 
-    sl_VAF = np.array(VAF_list)
-    sl_G20 = np.array(G20_list)
-    sl_A20 = np.array(A20_list)
+    else:
+        # Mode 1: seamless hist+exp cumulative, offset to zero at t_ref
+        lh = lithk if exp == hist else lithk_hist
+        th = topg if exp == hist else topg_hist
+        n_lh = nt if exp == hist else n_hist
+
+        # Hist pre-pass: cumulate from hist[0] forward
+        H_prev = lh[0,:,:] * maxmask1 * iaf2GIC
+        B_prev = th[0,:,:]
+        acc = 0.0
+        hist_cumul = [0.0]
+        for n_h in range(1, n_lh):
+            H_h = lh[n_h,:,:] * maxmask1 * iaf2GIC
+            B_h = th[n_h,:,:]
+            acc += slc_A2020.get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c)
+            hist_cumul.append(acc)
+            H_prev = H_h.copy()
+            B_prev = B_h.copy()
+        offset = hist_cumul[ref_idx]
+
+        if exp == hist:
+            A20_list = [v - offset for v in hist_cumul]
+        else:
+            # H_prev/B_prev are at hist[-1]; continue into exp
+            raw_exp = []
+            for n in range(nt):
+                H = lithk[n,:,:] * maxmask1 * iaf2GIC
+                B = topg[n,:,:]
+                acc += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c)
+                raw_exp.append(acc)
+                H_prev = H.copy()
+                B_prev = B.copy()
+            if ref_in_exp:
+                offset = raw_exp[ref_idx_exp]
+            A20_list = [v - offset for v in raw_exp]
+            if hist_n_out > 0:
+                A20_hist = [v - offset for v in hist_cumul[hist_start:]]
+
+    sl_VAF = np.concatenate([VAF_hist, VAF_list])
+    sl_G20 = np.concatenate([G20_hist, G20_list])
+    sl_A20 = np.concatenate([A20_hist, A20_list])
 
     if verbose:
         print(sl_VAF)
@@ -297,6 +386,8 @@ for regionName, region_mask in vars(regions).items():
 
     ###############################################
     # Write netcdf file
+
+    time_out = np.concatenate([time_hist[hist_start:], time_model]) if hist_n_out > 0 else time_model
 
     scfile = outpath + "/scalars_" + regionName + "_" + file_suffix
     ds = nc.Dataset(scfile, 'w', format='NETCDF4')
@@ -318,7 +409,7 @@ for regionName, region_mask in vars(regions).items():
     var_A2020.long_name = 'Sea level contribution based on A2020'
     var_A2020.units     = 'm'
     # assign data
-    var_time[:]  = time_model
+    var_time[:]  = time_out
     var_VAF[:]   = sl_VAF[:]
     var_G2020[:] = sl_G20[:]
     var_A2020[:] = sl_A20[:]
