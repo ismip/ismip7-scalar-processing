@@ -52,10 +52,10 @@ All scripts accept CLI arguments; the default settings match the NORCE/CISM08-MA
 cd python
 conda run -n nc python3 scalars.py --region AIS
 conda run -n nc python3 scalars.py --region GrIS
-conda run -n nc python3 scalars.py --region AIS --lab ISMIP7 --model TEST --exp exp0 --ref historical
+conda run -n nc python3 scalars.py --region AIS --lab ISMIP7 --model TEST --exp exp0 --hist historical
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--lab`, `--model`, `--exp`, `--ref`, `--refyear`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--lab`, `--model`, `--exp`, `--hist`, `--refyear`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
 
 Output is written to `./output/` relative to the script directory.
 
@@ -67,7 +67,7 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
-Set workspace variables before `run()` to override any default (`lab`, `model`, `exp`, `ref`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
+Set workspace variables before `run()` to override any default (`lab`, `model`, `exp`, `hist`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
 
 ### NCO/bash (GrIS only)
 

@@ -43,10 +43,8 @@ parser.add_argument("--region",    required=True, choices=["AIS", "GrIS"],
 parser.add_argument("--lab",       default=None,                   help="Lab identifier")
 parser.add_argument("--model",     default=None,                   help="Model name")
 parser.add_argument("--exp",       default=None,                   help="Experiment name")
-parser.add_argument("--ref",       default="historical",           help="Reference experiment")
-parser.add_argument("--refyear",   type=int, default=None,         help="Year to use as SLC reference (default: last timestep of ref experiment)")
-parser.add_argument("--A20mode",   type=int, default=1, choices=[1, 2, 3],
-                                                                   help="A2020 method: 1=seamless hist+exp cumul (default), 2=relative to ref, 3=forward-backward")
+parser.add_argument("--hist",      default="historical",           help="Historical experiment")
+parser.add_argument("--refyear",   type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
 parser.add_argument("--res",       default="08",                   help="Resolution (e.g. 08 for 8 km)")
 parser.add_argument("--datapath",  default=None,                   help="Path to generic data files (default: ../Data/<region>)")
 parser.add_argument("--modelpath", default=None,                   help="Path to model output (default: ../Models/<region>)")
@@ -57,8 +55,7 @@ region    = args.region
 lab       = args.lab       or DEFAULTS[region]["lab"]
 model     = args.model     or DEFAULTS[region]["model"]
 exp       = args.exp       or DEFAULTS[region]["exp"]
-ref       = args.ref
-A20_mode  = args.A20mode
+hist      = args.hist
 res       = args.res
 datapath  = args.datapath  if args.datapath  else "../Data/" + region
 modelpath = args.modelpath if args.modelpath else "../Models/" + region
@@ -74,6 +71,9 @@ file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch
 ## What masking to apply. If true, applied to all output
 # Remove GIC contribution
 flg_GICmask = True  # [Default True!]
+
+# A2020: seamless hist+exp cumulative (True, default) vs. relative to reference (False)
+flg_A20_cumul = True
 
 # More output
 verbose = False
@@ -182,32 +182,50 @@ idat = nc.Dataset(exppath + "/topg_" + region + "_" + lab + "_" + model + "_" + 
 topg = idat.variables["topg"][:,:,:]
 idat.close()
 
-# Reference experiment
-refpath = modelpath + "/" + lab + "/" + model + "/" + ref + "_" + res
+# Historical experiment
+histpath = modelpath + "/" + lab + "/" + model + "/" + hist + "_" + res
 # Model geometry
-idat = nc.Dataset(refpath + "/lithk_" + region + "_" + lab + "_" + model + "_" + ref + ".nc", 'r')
+idat = nc.Dataset(histpath + "/lithk_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
 time_ref_var = idat.variables["time"]
 n_hist = len(time_ref_var)
+ref_in_exp = False
+ref_idx_exp = None
 if args.refyear is not None:
     dates = nc.num2date(time_ref_var[:], time_ref_var.units, calendar=time_ref_var.calendar)
-    ref_idx = int(np.where(np.array([d.year for d in dates]) == args.refyear)[0][-1])
+    idx_arr = np.where(np.array([d.year for d in dates]) == args.refyear)[0]
+    if len(idx_arr) > 0:
+        ref_idx = int(idx_arr[-1])
+    else:
+        ref_idx = n_hist - 1  # refyear not in hist; will search exp after loading
+        ref_in_exp = True
 else:
     ref_idx = n_hist - 1  # last timestep (absolute index)
 lithk_ref = idat.variables["lithk"][ref_idx,:,:]
-need_hist = (exp != ref) and (A20_mode == 1 or (A20_mode == 3 and ref_idx != n_hist - 1))
+need_hist = (exp != hist) and flg_A20_cumul
 if need_hist:
     lithk_hist = idat.variables["lithk"][:,:,:]
 idat.close()
-idat = nc.Dataset(refpath + "/topg_" + region + "_" + lab + "_" + model + "_" + ref + ".nc", 'r')
+idat = nc.Dataset(histpath + "/topg_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
 topg_ref = idat.variables["topg"][ref_idx,:,:]
 if need_hist:
     topg_hist = idat.variables["topg"][:,:,:]
 idat.close()
 
-# For exp==ref, hist arrays are the same as exp arrays
-if exp == ref and A20_mode in [1, 3]:
+# For exp==hist, hist arrays are the same as exp arrays
+if exp == hist and flg_A20_cumul:
     lithk_hist = lithk
     topg_hist = topg
+
+# If refyear was not found in the hist file, search the exp file
+if ref_in_exp:
+    print(f"Warning: --refyear {args.refyear} not found in hist experiment '{hist}'; searching exp '{exp}'")
+    dates_exp = nc.num2date(time_model, time_units, calendar=time_calendar)
+    idx_arr = np.where(np.array([d.year for d in dates_exp]) == args.refyear)[0]
+    if len(idx_arr) == 0:
+        raise ValueError(f"--refyear {args.refyear} not found in hist experiment '{hist}' or exp '{exp}'")
+    ref_idx_exp = int(idx_arr[-1])
+    lithk_ref = lithk[ref_idx_exp,:,:]
+    topg_ref  = topg[ref_idx_exp,:,:]
 
 # Add model params
 idat = nc.Dataset(modelpath + "/" + lab + "/" + model + "/params.nc", 'r')
@@ -280,95 +298,48 @@ for regionName, region_mask in vars(regions).items():
         G20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
 
     # ---- A2020 (method-dependent) ----
-    if A20_mode == 2:
+    if not flg_A20_cumul:
         # Relative to reference state at every timestep
         for n in range(nt):
             H = lithk[n,:,:] * maxmask1 * iaf2GIC
             B = topg[n,:,:]
             A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
 
-    elif A20_mode == 3 and ref_idx == n_hist - 1 and exp != ref:
-        # Forward-only from H0/B0 (default case: t_ref = last hist year, exp is future)
-        H_prev = H0.copy()
-        B_prev = B0.copy()
-        acc = 0.0
-        for n in range(nt):
-            H = lithk[n,:,:] * maxmask1 * iaf2GIC
-            B = topg[n,:,:]
-            acc += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c)
-            A20_list.append(acc)
-            H_prev = H.copy()
-            B_prev = B.copy()
-
     else:
-        # Mode 1 (all cases) and Mode 3 with exp==ref or non-default ref_idx
-        lh = lithk if exp == ref else lithk_hist
-        th = topg if exp == ref else topg_hist
-        n_lh = nt if exp == ref else n_hist
+        # Mode 1: seamless hist+exp cumulative, offset to zero at t_ref
+        lh = lithk if exp == hist else lithk_hist
+        th = topg if exp == hist else topg_hist
+        n_lh = nt if exp == hist else n_hist
 
-        if A20_mode == 1 or (A20_mode == 3 and exp == ref):
-            # Hist pre-pass: cumulate from hist[0] forward
-            H_prev = lh[0,:,:] * maxmask1 * iaf2GIC
-            B_prev = th[0,:,:]
-            acc = 0.0
-            hist_cumul = [0.0]
-            for n_h in range(1, n_lh):
-                H_h = lh[n_h,:,:] * maxmask1 * iaf2GIC
-                B_h = th[n_h,:,:]
-                acc += slc_A2020.get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c)
-                hist_cumul.append(acc)
-                H_prev = H_h.copy()
-                B_prev = B_h.copy()
-            offset = hist_cumul[ref_idx]
+        # Hist pre-pass: cumulate from hist[0] forward
+        H_prev = lh[0,:,:] * maxmask1 * iaf2GIC
+        B_prev = th[0,:,:]
+        acc = 0.0
+        hist_cumul = [0.0]
+        for n_h in range(1, n_lh):
+            H_h = lh[n_h,:,:] * maxmask1 * iaf2GIC
+            B_h = th[n_h,:,:]
+            acc += slc_A2020.get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c)
+            hist_cumul.append(acc)
+            H_prev = H_h.copy()
+            B_prev = B_h.copy()
+        offset = hist_cumul[ref_idx]
 
-            if A20_mode == 1:
-                if exp == ref:
-                    A20_list = [v - offset for v in hist_cumul]
-                else:
-                    # H_prev/B_prev are at hist[-1]; continue into exp
-                    for n in range(nt):
-                        H = lithk[n,:,:] * maxmask1 * iaf2GIC
-                        B = topg[n,:,:]
-                        acc += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c)
-                        A20_list.append(acc - offset)
-                        H_prev = H.copy()
-                        B_prev = B.copy()
-
-            else:  # A20_mode == 3 and exp == ref
-                # Backward values: hist_cumul[n] - offset (= negated forward sum from n to ref_idx)
-                backward_part = [v - offset for v in hist_cumul[:ref_idx]]
-                # Forward values: fresh cumulation starting at ref_idx (value = 0 there)
-                H_prev = lh[ref_idx,:,:] * maxmask1 * iaf2GIC
-                B_prev = th[ref_idx,:,:]
-                acc = 0.0
-                forward_part = [0.0]
-                for n_h in range(ref_idx + 1, n_lh):
-                    H_h = lh[n_h,:,:] * maxmask1 * iaf2GIC
-                    B_h = th[n_h,:,:]
-                    acc += slc_A2020.get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c)
-                    forward_part.append(acc)
-                    H_prev = H_h.copy()
-                    B_prev = B_h.copy()
-                A20_list = backward_part + forward_part
-
-        else:  # A20_mode == 3 and exp != ref and ref_idx != n_hist - 1
-            # Forward from ref_idx through remaining hist, then exp; output exp only
-            H_prev = lh[ref_idx,:,:] * maxmask1 * iaf2GIC
-            B_prev = th[ref_idx,:,:]
-            acc = 0.0
-            for n_h in range(ref_idx + 1, n_lh):
-                H_h = lh[n_h,:,:] * maxmask1 * iaf2GIC
-                B_h = th[n_h,:,:]
-                acc += slc_A2020.get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c)
-                H_prev = H_h.copy()
-                B_prev = B_h.copy()
+        if exp == hist:
+            A20_list = [v - offset for v in hist_cumul]
+        else:
+            # H_prev/B_prev are at hist[-1]; continue into exp
+            raw_exp = []
             for n in range(nt):
                 H = lithk[n,:,:] * maxmask1 * iaf2GIC
                 B = topg[n,:,:]
                 acc += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c)
-                A20_list.append(acc)
+                raw_exp.append(acc)
                 H_prev = H.copy()
                 B_prev = B.copy()
+            if ref_in_exp:
+                offset = raw_exp[ref_idx_exp]
+            A20_list = [v - offset for v in raw_exp]
 
     sl_VAF = np.array(VAF_list)
     sl_G20 = np.array(G20_list)
