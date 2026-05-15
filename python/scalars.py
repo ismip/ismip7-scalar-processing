@@ -49,6 +49,8 @@ parser.add_argument("--res",       default="08",                   help="Resolut
 parser.add_argument("--datapath",  default=None,                   help="Path to generic data files (default: ../Data/<region>)")
 parser.add_argument("--modelpath", default=None,                   help="Path to model output (default: ../Models/<region>)")
 parser.add_argument("--outpath",   default="./output",             help="Path for output scalar files")
+parser.add_argument("--histout",   type=int, default=1,
+                                               help="Hist timesteps to prepend to output: 0=none, 1=last only (default), -1=all, N=last N")
 args = parser.parse_args()
 
 region    = args.region
@@ -60,6 +62,7 @@ res       = args.res
 datapath  = args.datapath  if args.datapath  else "../Data/" + region
 modelpath = args.modelpath if args.modelpath else "../Models/" + region
 outpath   = args.outpath
+histout   = args.histout
 ## What output to produce
 flg_mm = True  # Integrals on model mask
 flg_bm = False  # IMBIE3 basins
@@ -188,6 +191,7 @@ histpath = modelpath + "/" + lab + "/" + model + "/" + hist + "_" + res
 idat = nc.Dataset(histpath + "/lithk_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
 time_ref_var = idat.variables["time"]
 n_hist = len(time_ref_var)
+time_hist = time_ref_var[:]
 ref_in_exp = False
 ref_idx_exp = None
 if args.refyear is not None:
@@ -200,14 +204,31 @@ if args.refyear is not None:
         ref_in_exp = True
 else:
     ref_idx = n_hist - 1  # last timestep (absolute index)
+
+# Number of hist timesteps to prepend to output
+if exp == hist:
+    hist_n_out = 0  # full run already output via exp
+elif histout == 0:
+    hist_n_out = 0
+elif histout == -1:
+    hist_n_out = n_hist
+else:
+    if histout > n_hist:
+        print(f"Warning: --histout {histout} exceeds hist length {n_hist}; using all {n_hist} timesteps")
+        hist_n_out = n_hist
+    else:
+        hist_n_out = histout
+hist_start = n_hist - hist_n_out
+
 lithk_ref = idat.variables["lithk"][ref_idx,:,:]
 need_hist = (exp != hist) and flg_A20_cumul
-if need_hist:
+need_hist_arrays = need_hist or (hist_n_out > 0)
+if need_hist_arrays:
     lithk_hist = idat.variables["lithk"][:,:,:]
 idat.close()
 idat = nc.Dataset(histpath + "/topg_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
 topg_ref = idat.variables["topg"][ref_idx,:,:]
-if need_hist:
+if need_hist_arrays:
     topg_hist = idat.variables["topg"][:,:,:]
 idat.close()
 
@@ -278,6 +299,7 @@ for regionName, region_mask in vars(regions).items():
     VAF_list = []
     G20_list = []
     A20_list = []
+    VAF_hist, G20_hist, A20_hist = [], [], []
 
     # Reference state
     H0 = lithk_ref * maxmask1 * iaf2GIC
@@ -289,6 +311,16 @@ for regionName, region_mask in vars(regions).items():
     A = region_mask * af2 * (float(res)*1000.0)**2
 
     nt = len(lithk)
+
+    # ---- Hist portion (VAF, G2020, and non-cumulative A2020) ----
+    if hist_n_out > 0:
+        for n in range(hist_start, n_hist):
+            H = lithk_hist[n,:,:] * maxmask1 * iaf2GIC
+            B = topg_hist[n,:,:]
+            VAF_hist.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
+            G20_hist.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
+            if not flg_A20_cumul:
+                A20_hist.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
 
     # ---- VAF and G2020 (always relative to reference state) ----
     for n in range(nt):
@@ -340,10 +372,12 @@ for regionName, region_mask in vars(regions).items():
             if ref_in_exp:
                 offset = raw_exp[ref_idx_exp]
             A20_list = [v - offset for v in raw_exp]
+            if hist_n_out > 0:
+                A20_hist = [v - offset for v in hist_cumul[hist_start:]]
 
-    sl_VAF = np.array(VAF_list)
-    sl_G20 = np.array(G20_list)
-    sl_A20 = np.array(A20_list)
+    sl_VAF = np.concatenate([VAF_hist, VAF_list])
+    sl_G20 = np.concatenate([G20_hist, G20_list])
+    sl_A20 = np.concatenate([A20_hist, A20_list])
 
     if verbose:
         print(sl_VAF)
@@ -352,6 +386,8 @@ for regionName, region_mask in vars(regions).items():
 
     ###############################################
     # Write netcdf file
+
+    time_out = np.concatenate([time_hist[hist_start:], time_model]) if hist_n_out > 0 else time_model
 
     scfile = outpath + "/scalars_" + regionName + "_" + file_suffix
     ds = nc.Dataset(scfile, 'w', format='NETCDF4')
@@ -373,7 +409,7 @@ for regionName, region_mask in vars(regions).items():
     var_A2020.long_name = 'Sea level contribution based on A2020'
     var_A2020.units     = 'm'
     # assign data
-    var_time[:]  = time_model
+    var_time[:]  = time_out
     var_VAF[:]   = sl_VAF[:]
     var_G2020[:] = sl_G20[:]
     var_A2020[:] = sl_A20[:]
