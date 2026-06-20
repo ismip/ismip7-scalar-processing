@@ -2,7 +2,7 @@
 
 Scripts for computing sea-level contributions (SLC) and other scalar variables from ISMIP7 ice sheet model output for the Antarctic Ice Sheet (AIS) and Greenland Ice Sheet (GrIS). All scripts expect ISMIP7-compliant model output on the diagnostic ISMIP grid following the **new ISMIP7 naming conventions** (10-field filename, see below).
 
-Three parallel implementations are provided: **Python** (primary), **NCO/bash** (GrIS only), and **MATLAB**. Conversion scripts for older (ISMIP6) submissions live in the sibling repo `convert-submissions-ismip6-to-ismip7`.
+Two implementations are provided: **Python** (primary) and **MATLAB**. Conversion scripts for older (ISMIP6) submissions live in the sibling repo `convert-submissions-ismip6-to-ismip7`.
 
 ## Requirements
 
@@ -25,7 +25,9 @@ ismip7-scalar-processing/                        # repository root
 ├── slc/                                         # shared SLC computation package
 ├── python/scalars.py                            # AIS + GrIS (--region flag)
 ├── matlab/scalars.m                             # AIS + GrIS (region variable)
-├── nco/scalars_GrIS.sh                          # GrIS NCO/bash implementation
+├── tools/                                       # shared helper scripts
+│   ├── set_params.sh                            # generate params.nc for a model
+│   └── params_template.nc                       # template for model-specific densities
 ├── Data/                                        # default location for masks and area factors
 │   ├── AIS/
 │   ├── GrIS/
@@ -119,14 +121,12 @@ matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 
 Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
 
-### NCO/bash (GrIS only)
+### Model density parameters
 
-First create the model-specific parameter file, then run the main script:
+Each model directory must contain a `params.nc` file with ice (`rhoi`), ocean (`rhow`), and freshwater (`rhof`) densities. Use `tools/set_params.sh` to generate one from `tools/params_template.nc`:
 
 ```bash
-cd nco
-bash set_params.sh
-bash scalars_GrIS.sh
+bash tools/set_params.sh
 ```
 
 ## MINI test suite
