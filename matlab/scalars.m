@@ -466,19 +466,25 @@ end
 % Local functions — year decoding
 
 function yrs = decode_years(t, units)
-% Decode a time vector to calendar years using the 'since YYYY' origin.
-    tok = regexp(units, 'since\s+(\d{4})', 'tokens');
-    if isempty(tok)
-        error('Cannot parse origin year from time units: %s', units);
+% Decode a time vector to calendar years using MATLAB datetime (calendar-aware).
+    tok = regexp(units, 'since\s+(\d{4})-(\d{2})-(\d{2})', 'tokens');
+    if ~isempty(tok)
+        origin = datetime(str2double(tok{1}{1}), str2double(tok{1}{2}), str2double(tok{1}{3}));
+    else
+        tok = regexp(units, 'since\s+(\d{4})', 'tokens');
+        if isempty(tok)
+            error('Cannot parse origin from time units: %s', units);
+        end
+        origin = datetime(str2double(tok{1}{1}), 1, 1);
     end
-    origin_year = str2double(tok{1}{1});
     if contains(units, 'day')
-        yrs = floor(origin_year + t / 365.25);
+        dt = origin + days(t);
     elseif contains(units, 'year')
-        yrs = floor(origin_year + t);
+        dt = origin + years(t);
     else
         error('Unsupported time unit: %s', units);
     end
+    yrs = year(dt);
 end
 
 
@@ -613,18 +619,7 @@ function [idx, found] = find_year_idx_safe(ncfile, varname, target_year)
             break;
         end
     end
-    tok = regexp(units, 'since\s+(\d{4})', 'tokens');
-    if isempty(tok)
-        error('Cannot parse origin year from time units: %s', units);
-    end
-    origin_year = str2double(tok{1}{1});
-    if contains(units, 'day')
-        yr = floor(origin_year + t / 365.25);
-    elseif contains(units, 'year')
-        yr = floor(origin_year + t);
-    else
-        error('Unsupported time unit: %s', units);
-    end
+    yr = decode_years(t, units);
     hits = find(yr == target_year);
     if isempty(hits)
         idx   = 0;
