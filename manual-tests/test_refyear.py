@@ -54,33 +54,35 @@ def check(label, cond, detail=''):
 
 try:
     cmd = [sys.executable, SCRIPT,
-           '--region',    args.region,
-           '--lab',       args.lab,
-           '--model',     args.model,
-           '--exp',       args.exp,
-           '--hist',      args.hist,
-           '--refyear',   str(args.refyear),
-           '--datapath',  args.datapath,
-           '--modelpath', args.modelpath,
-           '--outpath',   tmpdir]
+           '--region',     args.region,
+           '--group',      args.lab,
+           '--model',      args.model,
+           '--experiment', args.exp,
+           '--hist',       args.hist,
+           '--refyear',    str(args.refyear),
+           '--datapath',   args.datapath,
+           '--modelpath',  args.modelpath,
+           '--outpath',    tmpdir]
     r = subprocess.run(cmd, capture_output=True, text=True)
 
     if r.returncode != 0:
         print(f'Script failed:\n{r.stderr}')
         sys.exit(1)
 
-    files = [f for f in os.listdir(tmpdir) if f.endswith('.nc')]
-    if not files:
+    vaf_files = [f for f in os.listdir(tmpdir) if f.startswith('slvaf_') and f.endswith('.nc')]
+    a20_files = [f for f in os.listdir(tmpdir) if f.startswith('sla20_') and f.endswith('.nc')]
+    if not vaf_files:
         print('No output file found')
         sys.exit(1)
 
-    ds    = nc.Dataset(os.path.join(tmpdir, files[0]))
-    t     = ds.variables['time'][:]
-    dates = nc.num2date(t, ds.variables['time'].units, ds.variables['time'].calendar)
+    ds_v  = nc.Dataset(os.path.join(tmpdir, vaf_files[0]))
+    ds_a  = nc.Dataset(os.path.join(tmpdir, a20_files[0]))
+    t     = ds_v.variables['time'][:]
+    dates = nc.num2date(t, ds_v.variables['time'].units, ds_v.variables['time'].calendar)
     years = np.array([d.year for d in dates])
-    vaf   = np.array(ds.variables['slc_VAF'][:])
-    a20   = np.array(ds.variables['slc_A2020'][:])
-    ds.close()
+    vaf   = np.array(ds_v.variables['slvaf'][:])
+    a20   = np.array(ds_a.variables['sla20'][:])
+    ds_v.close(); ds_a.close()
 
     ref_idx = np.where(years == args.refyear)[0]
     print(f'refyear={args.refyear}: nt={len(t)}, years={years[0]}..{years[-1]}')

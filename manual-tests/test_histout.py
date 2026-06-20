@@ -42,9 +42,9 @@ args = parser.parse_args()
 def run_scalars(histout, outdir):
     cmd = [sys.executable, SCRIPT,
            '--region',    args.region,
-           '--lab',       args.lab,
+           '--group',     args.lab,
            '--model',     args.model,
-           '--exp',       args.exp,
+           '--experiment', args.exp,
            '--hist',      args.hist,
            '--datapath',  args.datapath,
            '--modelpath', args.modelpath,
@@ -53,15 +53,17 @@ def run_scalars(histout, outdir):
     return subprocess.run(cmd, capture_output=True, text=True)
 
 def read_output(outdir):
-    files = [f for f in os.listdir(outdir) if f.endswith('.nc')]
-    if not files:
+    vaf_files = [f for f in os.listdir(outdir) if f.startswith('slvaf_') and f.endswith('.nc')]
+    a20_files = [f for f in os.listdir(outdir) if f.startswith('sla20_') and f.endswith('.nc')]
+    if not vaf_files:
         return None, None, None, None, None
-    ds = nc.Dataset(os.path.join(outdir, files[0]))
-    t     = ds.variables['time'][:]
-    dates = nc.num2date(t, ds.variables['time'].units, ds.variables['time'].calendar)
-    vaf   = np.array(ds.variables['slc_VAF'][:])
-    a20   = np.array(ds.variables['slc_A2020'][:])
-    ds.close()
+    ds_v  = nc.Dataset(os.path.join(outdir, vaf_files[0]))
+    ds_a  = nc.Dataset(os.path.join(outdir, a20_files[0]))
+    t     = ds_v.variables['time'][:]
+    dates = nc.num2date(t, ds_v.variables['time'].units, ds_v.variables['time'].calendar)
+    vaf   = np.array(ds_v.variables['slvaf'][:])
+    a20   = np.array(ds_a.variables['sla20'][:])
+    ds_v.close(); ds_a.close()
     return len(t), dates[0].year, dates[-1].year, vaf, a20
 
 fail = False
