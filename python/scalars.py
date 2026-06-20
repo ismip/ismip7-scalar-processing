@@ -6,6 +6,8 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 import argparse
+import csv
+import glob
 import netCDF4 as nc
 import numpy as np
 from types import SimpleNamespace
@@ -32,37 +34,65 @@ FILE_CONFIG = {
 
 # Region-specific defaults
 DEFAULTS = {
-    "AIS":  {"lab": "VUW",   "model": "PISM1",             "exp": "expAE04"},
-    "GrIS": {"lab": "NORCE", "model": "CISM08-MAR312-p50", "exp": "historical"},
+    "AIS":  {"group": "VUW",   "model": "PISM1",             "experiment": "ssp585",
+             "modelid": "m001", "esm": "CESM2", "forcingid": "f001", "configid": "E001",
+             "exp_group": "ESM"},
+    "GrIS": {"group": "NORCE", "model": "CISM08-MAR312-p50", "experiment": "historical",
+             "modelid": "m001", "esm": "NorESM2-MM",   "forcingid": "f001", "configid": "E001",
+             "exp_group": "ESM"},
 }
 
 # User settings
 parser = argparse.ArgumentParser(description="ISMIP7 scalar processing")
-parser.add_argument("--region",    required=True, choices=["AIS", "GrIS"],
-                                                                   help="Ice sheet region")
-parser.add_argument("--lab",       default=None,                   help="Lab identifier")
-parser.add_argument("--model",     default=None,                   help="Model name")
-parser.add_argument("--exp",       default=None,                   help="Experiment name")
-parser.add_argument("--hist",      default="historical",           help="Historical experiment")
-parser.add_argument("--refyear",   type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
-parser.add_argument("--res",       default="08",                   help="Resolution (e.g. 08 for 8 km)")
-parser.add_argument("--datapath",  default=None,                   help="Path to generic data files (default: ../Data/<region>)")
-parser.add_argument("--modelpath", default=None,                   help="Path to model output (default: ../Models/<region>)")
-parser.add_argument("--outpath",   default="./output",             help="Path for output scalar files")
-parser.add_argument("--histout",   type=int, default=1,
-                                               help="Hist timesteps to prepend to output: 0=none, 1=last only (default), -1=all, N=last N")
+parser.add_argument("--region",         required=True, choices=["AIS", "GrIS"],
+                                                                        help="Ice sheet region")
+parser.add_argument("--group",          default=None,                   help="Submitting group/lab")
+parser.add_argument("--model",          default=None,                   help="Ice sheet model name")
+parser.add_argument("--experiment",     default=None,                   help="Experiment name (e.g. ssp126, ctrl)")
+parser.add_argument("--modelid",        default=None,                   help="ISM member ID (e.g. m001)")
+parser.add_argument("--esm",            default=None,                   help="Climate forcing model (e.g. NorESM2-MM)")
+parser.add_argument("--forcingid",      default=None,                   help="Forcing realization (e.g. f001)")
+parser.add_argument("--configid",       default=None,                   help="Configuration ID (e.g. C001)")
+parser.add_argument("--exp-group",      default=None,                   help="Experiment directory name (CORE, ESM, or PPE)")
+parser.add_argument("--hist",           default="historical",           help="Historical experiment name")
+parser.add_argument("--hist-exp-group", default=None,                   help="History experiment directory (default: same as --exp-group)")
+parser.add_argument("--refyear",        type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
+parser.add_argument("--res",            default="08",                   help="Resolution for data files (e.g. 08 for 8 km)")
+parser.add_argument("--datapath",       default=None,                   help="Path to generic data files (default: ../Data/<region>)")
+parser.add_argument("--modelpath",      default=None,                   help="Path to model output (default: ../Models/<region>)")
+parser.add_argument("--outpath",        default="./output",             help="Path for output scalar files")
+parser.add_argument("--histout",        type=int, default=1,
+                                                    help="Hist timesteps to prepend to output: 0=none, 1=last only (default), -1=all, N=last N")
 args = parser.parse_args()
 
 region    = args.region
-lab       = args.lab       or DEFAULTS[region]["lab"]
-model     = args.model     or DEFAULTS[region]["model"]
-exp       = args.exp       or DEFAULTS[region]["exp"]
+group     = args.group      or DEFAULTS[region]["group"]
+model     = args.model      or DEFAULTS[region]["model"]
+exp       = args.experiment or DEFAULTS[region]["experiment"]
+modelid   = args.modelid    or DEFAULTS[region]["modelid"]
+esm       = args.esm        or DEFAULTS[region]["esm"]
+forcingid = args.forcingid  or DEFAULTS[region]["forcingid"]
+configid  = args.configid   or DEFAULTS[region]["configid"]
+exp_group = args.exp_group  or DEFAULTS[region]["exp_group"]
 hist      = args.hist
+hist_exp_group = args.hist_exp_group or exp_group
 res       = args.res
 datapath  = args.datapath  if args.datapath  else "../Data/" + region
 modelpath = args.modelpath if args.modelpath else "../Models/" + region
 outpath   = args.outpath
+csvpath   = os.path.join(os.path.dirname(outpath), "csv")
 histout   = args.histout
+
+
+def find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid, experiment, configid):
+    pattern = os.path.join(dirpath,
+        f"{var}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{experiment}_{configid}_*.nc")
+    files = glob.glob(pattern)
+    if len(files) == 0:
+        raise FileNotFoundError(f"No file found:\n  {pattern}")
+    if len(files) > 1:
+        raise ValueError(f"Multiple files match for {var} — cannot disambiguate:\n  " + "\n  ".join(files))
+    return files[0]
 ## What output to produce
 flg_mm = True  # Integrals on model mask
 flg_bm = False  # IMBIE3 basins
@@ -89,7 +119,7 @@ af2input   = datapath + "/" + cfg["af2"].format(res=res)
 mminput    = datapath + "/" + cfg["maxmask"].format(res=res)
 gicinput   = datapath + "/" + cfg["gic"].format(res=res)
 basininput = datapath + "/" + cfg["basins"].format(res=res)
-file_suffix = region + "_" + lab + "_" + model + "_" + exp + "_" + res + "000m.nc"
+# file_stem built after time_out is known (year range derived from output time axis)
 
 ####################################################
 # Prepare generic data file
@@ -171,9 +201,9 @@ if flg_GICmask:
 # Prepare model output
 
 # Main experiment
-exppath = modelpath + "/" + lab + "/" + model + "/" + exp + "_" + res
+exppath = modelpath + "/" + group + "/" + model + "/" + exp_group
 # Model geometry
-idat = nc.Dataset(exppath + "/lithk_" + region + "_" + lab + "_" + model + "_" + exp + ".nc", 'r')
+idat = nc.Dataset(find_model_file(exppath, "lithk", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
 lithk = idat.variables["lithk"][:,:,:]
 # Pick up time axis
 time_model     = idat.variables["time"][:]
@@ -181,14 +211,14 @@ time_units     = idat.variables["time"].units
 time_long_name = idat.variables["time"].long_name
 time_calendar  = idat.variables["time"].calendar
 idat.close()
-idat = nc.Dataset(exppath + "/topg_" + region + "_" + lab + "_" + model + "_" + exp + ".nc", 'r')
+idat = nc.Dataset(find_model_file(exppath, "topg", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
 topg = idat.variables["topg"][:,:,:]
 idat.close()
 
 # Historical experiment
-histpath = modelpath + "/" + lab + "/" + model + "/" + hist + "_" + res
+histpath = modelpath + "/" + group + "/" + model + "/" + hist_exp_group
 # Model geometry
-idat = nc.Dataset(histpath + "/lithk_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
+idat = nc.Dataset(find_model_file(histpath, "lithk", region, group, model, modelid, esm, forcingid, hist, configid), 'r')
 time_ref_var = idat.variables["time"]
 n_hist = len(time_ref_var)
 time_hist = time_ref_var[:]
@@ -226,7 +256,7 @@ need_hist_arrays = need_hist or (hist_n_out > 0)
 if need_hist_arrays:
     lithk_hist = idat.variables["lithk"][:,:,:]
 idat.close()
-idat = nc.Dataset(histpath + "/topg_" + region + "_" + lab + "_" + model + "_" + hist + ".nc", 'r')
+idat = nc.Dataset(find_model_file(histpath, "topg", region, group, model, modelid, esm, forcingid, hist, configid), 'r')
 topg_ref = idat.variables["topg"][ref_idx,:,:]
 if need_hist_arrays:
     topg_hist = idat.variables["topg"][:,:,:]
@@ -249,7 +279,7 @@ if ref_in_exp:
     topg_ref  = topg[ref_idx_exp,:,:]
 
 # Add model params
-idat = nc.Dataset(modelpath + "/" + lab + "/" + model + "/params.nc", 'r')
+idat = nc.Dataset(modelpath + "/" + group + "/" + model + "/params.nc", 'r')
 scalar = idat.variables["rhoi"]; rhoi = scalar[()]
 scalar = idat.variables["rhow"]; rhow = scalar[()]
 scalar = idat.variables["rhof"]; rhof = scalar[()]
@@ -261,13 +291,13 @@ c.RHOFW = rhof  # kg/m3
 c.AO    = oarea  # m2
 
 # Model masks
-idat = nc.Dataset(exppath + "/sftgif_" + region + "_" + lab + "_" + model + "_" + exp + ".nc", 'r')
+idat = nc.Dataset(find_model_file(exppath, "sftgif", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
 sftgif = idat.variables["sftgif"][:,:,:]
 idat.close()
-idat = nc.Dataset(exppath + "/sftgrf_" + region + "_" + lab + "_" + model + "_" + exp + ".nc", 'r')
+idat = nc.Dataset(find_model_file(exppath, "sftgrf", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
 sftgrf = idat.variables["sftgrf"][:,:,:]
 idat.close()
-idat = nc.Dataset(exppath + "/sftflf_" + region + "_" + lab + "_" + model + "_" + exp + ".nc", 'r')
+idat = nc.Dataset(find_model_file(exppath, "sftflf", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
 sftflf = idat.variables["sftflf"][:,:,:]
 idat.close()
 
@@ -389,30 +419,65 @@ for regionName, region_mask in vars(regions).items():
 
     time_out = np.concatenate([time_hist[hist_start:], time_model]) if hist_n_out > 0 else time_model
 
-    scfile = outpath + "/scalars_" + regionName + "_" + file_suffix
-    ds = nc.Dataset(scfile, 'w', format='NETCDF4')
-    ds.createDimension('time', None)
-    # Variables
-    var_time  = ds.createVariable('time',     'float', ('time'), zlib=True)
-    var_VAF   = ds.createVariable('slc_VAF',  'float', ('time'), zlib=True)
-    var_G2020 = ds.createVariable('slc_G2020','float', ('time'), zlib=True)
-    var_A2020 = ds.createVariable('slc_A2020','float', ('time'), zlib=True)
-    # Attributes
-    ds.description = file_description
-    var_time.units     = time_units
-    var_time.long_name = time_long_name
-    var_time.calendar  = time_calendar
-    var_VAF.long_name   = 'Sea level contribution based on Vaf'
-    var_VAF.units       = 'm'
-    var_G2020.long_name = 'Sea level contribution based on G2020'
-    var_G2020.units     = 'm'
-    var_A2020.long_name = 'Sea level contribution based on A2020'
-    var_A2020.units     = 'm'
-    # assign data
-    var_time[:]  = time_out
-    var_VAF[:]   = sl_VAF[:]
-    var_G2020[:] = sl_G20[:]
-    var_A2020[:] = sl_A20[:]
+    # Build filename from full ISMIP7 fields + nominal year range
+    # ST timestamps are Jan 1 of year N+1, so nominal year = decoded year - 1
+    dates_out  = nc.num2date(time_out, time_units, calendar=time_calendar)
+    year_start = dates_out[0].year  - 1
+    year_end   = dates_out[-1].year - 1
+    file_stem  = (f"{region}_{group}_{model}_{modelid}_{esm}_{forcingid}"
+                  f"_{exp}_{configid}_{year_start}-{year_end}")
 
-    ds.close()
-    print("Created file ", scfile)
+    for varname, long_name, sl_array in [
+        ("slvaf", "Sea level contribution based on Vaf",   sl_VAF),
+        ("slg20", "Sea level contribution based on G2020", sl_G20),
+        ("sla20", "Sea level contribution based on A2020", sl_A20),
+    ]:
+        scfile = outpath + "/" + varname + "_" + regionName + "_" + file_stem + ".nc"
+        ds = nc.Dataset(scfile, 'w', format='NETCDF4')
+        ds.createDimension('time', None)
+        ds.description = file_description
+        var_time = ds.createVariable('time',   'float', ('time',), zlib=True)
+        var_slc  = ds.createVariable(varname,  'float', ('time',), zlib=True)
+        var_time.units     = time_units
+        var_time.long_name = time_long_name
+        var_time.calendar  = time_calendar
+        var_slc.long_name  = long_name
+        var_slc.units      = 'm'
+        var_time[:]  = time_out
+        var_slc[:]   = sl_array[:]
+        ds.close()
+        print("Created file ", scfile)
+
+    ###############################################
+    # Write CSV files (one per SLC method)
+
+    csv_years   = range(1850, 2301)
+    nominal_yrs = [d.year - 1 for d in dates_out]
+    region_col  = "ALL" if regionName == "mm" else regionName
+
+    meta = {
+        "ice_source":    region,
+        "region":        region_col,
+        "group":         group,
+        "model":         model,
+        "model_variant": modelid,
+        "scenario":      exp,
+        "GCM":           esm,
+        "forcingid":     forcingid,
+        "configid":      configid,
+    }
+    meta_keys = list(meta.keys())
+    header = meta_keys + [f"y{y}" for y in csv_years]
+
+    os.makedirs(csvpath, exist_ok=True)
+    for varname, sl_array in [("slvaf", sl_VAF), ("slg20", sl_G20), ("sla20", sl_A20)]:
+        year_to_slc = dict(zip(nominal_yrs, sl_array))
+        row = [meta[k] for k in meta_keys] + [
+            year_to_slc[y] if y in year_to_slc else "NA" for y in csv_years
+        ]
+        csvfile = csvpath + "/" + varname + "_" + regionName + "_" + file_stem + ".csv"
+        with open(csvfile, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            writer.writerow(row)
+        print("Created file ", csvfile)

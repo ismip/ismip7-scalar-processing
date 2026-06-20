@@ -4,26 +4,37 @@
 addpath('/nird/services/software/betzy/sw_rl9/software/MATLAB/2024a/toolbox/matlab/matlab_sci/netcdf'); % ncread/nccreate/ncwrite/ncwriteatt
 
 % User settings — set any of these in the workspace before run() to override defaults
-if ~exist('region',    'var'), region    = 'AIS';       end
-if ~exist('hist',      'var'), hist      = 'historical'; end
-if ~exist('refyear',   'var'), refyear   = [];           end  % [] = last timestep of hist
-if ~exist('res',       'var'), res       = '08';         end
-if ~exist('outpath',   'var'), outpath   = './output';   end
+if ~exist('region',        'var'), region        = 'AIS';       end
+if ~exist('hist',          'var'), hist          = 'historical'; end
+if ~exist('refyear',       'var'), refyear       = [];           end  % [] = last timestep of hist
+if ~exist('res',           'var'), res           = '08';         end
+if ~exist('outpath',       'var'), outpath       = './output';   end
+if ~exist('histout',       'var'), histout       = 1;            end
 
 % Region-specific defaults
 switch region
     case 'AIS'
-        def_lab   = 'VUW';   def_model = 'PISM1';             def_exp = 'expAE04';
+        def_group     = 'VUW';   def_model = 'PISM1';             def_exp = 'expAE04';
+        def_modelid   = 'm001';  def_esm   = 'CESM2-WACCM';
+        def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
     case 'GrIS'
-        def_lab   = 'NORCE'; def_model = 'CISM08-MAR312-p50'; def_exp = 'historical';
+        def_group     = 'NORCE'; def_model = 'CISM08-MAR312-p50'; def_exp = 'historical';
+        def_modelid   = 'm001';  def_esm   = 'NorESM2-MM';
+        def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
     otherwise
         error('Unknown region: %s. Choose AIS or GrIS.', region);
 end
-if ~exist('lab',       'var') || isempty(lab),       lab       = def_lab;                end
-if ~exist('model',     'var') || isempty(model),     model     = def_model;              end
-if ~exist('exp',       'var') || isempty(exp),       exp       = def_exp;                end
-if ~exist('datapath',  'var') || isempty(datapath),  datapath  = ['../Data/'   region]; end
-if ~exist('modelpath', 'var') || isempty(modelpath), modelpath = ['../Models/' region]; end
+if ~exist('group',         'var') || isempty(group),         group         = def_group;                end
+if ~exist('model',         'var') || isempty(model),         model         = def_model;                end
+if ~exist('exp',           'var') || isempty(exp),           exp           = def_exp;                  end
+if ~exist('modelid',       'var') || isempty(modelid),       modelid       = def_modelid;              end
+if ~exist('esm',           'var') || isempty(esm),           esm           = def_esm;                  end
+if ~exist('forcingid',     'var') || isempty(forcingid),     forcingid     = def_forcingid;            end
+if ~exist('configid',      'var') || isempty(configid),      configid      = def_configid;             end
+if ~exist('exp_group',     'var') || isempty(exp_group),     exp_group     = def_exp_group;            end
+if ~exist('hist_exp_group','var') || isempty(hist_exp_group),hist_exp_group = exp_group;               end
+if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
+if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
 
 % What output to produce
 flg_mm = true;  % Integrals on model mask
@@ -56,7 +67,7 @@ switch region
         basininput = [datapath '/basins_GrIS_Mouginot_extended_'      res '000m_v1.nc'];
         gicinput   = [datapath '/iaf2_GIC_GrIS_'                      res '000m_v0.nc'];
 end
-file_suffix = [region '_' lab '_' model '_' exp '_' res '000m.nc'];
+csvpath = fullfile(fileparts(outpath), 'csv');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare generic data
@@ -133,9 +144,10 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare model output
 
-exppath = [modelpath '/' lab '/' model '/' exp '_' res];
+exppath  = [modelpath '/' group '/' model '/' exp_group];
+histpath = [modelpath '/' group '/' model '/' hist_exp_group];
 
-lithk_file = [exppath '/lithk_' region '_' lab '_' model '_' exp '.nc'];
+lithk_file = find_model_file(exppath, 'lithk', region, group, model, modelid, esm, forcingid, exp, configid);
 lithk      = double(ncread(lithk_file, 'lithk')); % (nx, ny, nt)
 time_model = double(ncread(lithk_file, 'time'));
 
@@ -152,14 +164,31 @@ for i = 1:length(time_info.Attributes)
     end
 end
 
-topg = double(ncread([exppath '/topg_' region '_' lab '_' model '_' exp '.nc'], 'topg')); % (nx, ny, nt)
+topg = double(ncread(find_model_file(exppath, 'topg', region, group, model, modelid, esm, forcingid, exp, configid), 'topg')); % (nx, ny, nt)
 
 % Historical experiment
-histpath        = [modelpath '/' lab '/' model '/' hist '_' res];
-hist_lithk_file = [histpath '/lithk_' region '_' lab '_' model '_' hist '.nc'];
+hist_lithk_file = find_model_file(histpath, 'lithk', region, group, model, modelid, esm, forcingid, hist, configid);
 lithk_hist_all  = double(ncread(hist_lithk_file, 'lithk'));
-topg_hist_all   = double(ncread([histpath '/topg_' region '_' lab '_' model '_' hist '.nc'], 'topg'));
+topg_hist_all   = double(ncread(find_model_file(histpath, 'topg', region, group, model, modelid, esm, forcingid, hist, configid), 'topg'));
+time_hist       = double(ncread(hist_lithk_file, 'time'));
 n_hist          = size(lithk_hist_all, 3);
+
+% Number of hist timesteps to prepend to output
+if strcmp(exp, hist)
+    hist_n_out = 0;
+elseif histout == 0
+    hist_n_out = 0;
+elseif histout == -1
+    hist_n_out = n_hist;
+else
+    if histout > n_hist
+        fprintf('Warning: histout %d exceeds hist length %d; using all %d timesteps\n', histout, n_hist, n_hist);
+        hist_n_out = n_hist;
+    else
+        hist_n_out = histout;
+    end
+end
+hist_start = n_hist - hist_n_out;  % 0-based start index into hist arrays
 
 ref_in_exp  = false;
 ref_idx_exp = [];
@@ -187,16 +216,16 @@ if ref_in_exp
 end
 
 % Model density parameters
-params_file = [modelpath '/' lab '/' model '/params.nc'];
+params_file = [modelpath '/' group '/' model '/params.nc'];
 c.RHOI  = double(ncread(params_file, 'rhoi'));
 c.RHOSW = double(ncread(params_file, 'rhow'));
 c.RHOFW = double(ncread(params_file, 'rhof'));
 c.AO    = oarea;
 
 % Model masks (loaded for completeness; not used in SLC computation)
-sftgif = double(ncread([exppath '/sftgif_' region '_' lab '_' model '_' exp '.nc'], 'sftgif'));
-sftgrf = double(ncread([exppath '/sftgrf_' region '_' lab '_' model '_' exp '.nc'], 'sftgrf'));
-sftflf = double(ncread([exppath '/sftflf_' region '_' lab '_' model '_' exp '.nc'], 'sftflf'));
+sftgif = double(ncread(find_model_file(exppath, 'sftgif', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgif'));
+sftgrf = double(ncread(find_model_file(exppath, 'sftgrf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgrf'));
+sftflf = double(ncread(find_model_file(exppath, 'sftflf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftflf'));
 
 if verbose
     fprintf('# Generic\n');
@@ -239,6 +268,29 @@ for ireg = 1:length(regionNames)
     sl_VAF = zeros(nt, 1);
     sl_G20 = zeros(nt, 1);
     sl_A20 = zeros(nt, 1);
+    VAF_hist = [];
+    G20_hist = [];
+    A20_hist = [];
+
+    % ---- Hist portion (VAF, G2020, and non-cumulative A2020) ----
+    if hist_n_out > 0
+        VAF_hist = zeros(hist_n_out, 1);
+        G20_hist = zeros(hist_n_out, 1);
+        for n = 1:hist_n_out
+            H              = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* iaf2GIC;
+            B              = topg_hist_all(:,:,  hist_start + n);
+            VAF_hist(n)    = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
+            G20_hist(n)    = get_slc_G2020(H0, H, B0, B, A, c);
+        end
+        if ~flg_A20_cumul
+            A20_hist = zeros(hist_n_out, 1);
+            for n = 1:hist_n_out
+                H           = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* iaf2GIC;
+                B           = topg_hist_all(:,:,  hist_start + n);
+                A20_hist(n) = get_slc_A2020(H0, H, B0, B, S0, S0, A, c);
+            end
+        end
+    end
 
     % ---- VAF and G2020 (always relative to reference state) ----
     for n = 1:nt
@@ -297,8 +349,16 @@ for ireg = 1:length(regionNames)
                 offset = raw_exp(ref_idx_exp);
             end
             sl_A20 = raw_exp - offset;
+            if hist_n_out > 0
+                A20_hist = hist_cumul(hist_start+1 : end) - offset;
+            end
         end
     end
+
+    % Concatenate hist + exp arrays
+    sl_VAF = [VAF_hist; sl_VAF];
+    sl_G20 = [G20_hist; sl_G20];
+    sl_A20 = [A20_hist; sl_A20];
 
     if verbose
         disp(sl_VAF');
@@ -307,35 +367,141 @@ for ireg = 1:length(regionNames)
     end
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Write NetCDF output
+    % Build output time axis and derive nominal year range (ST: year - 1)
 
-    scfile = [outpath '/scalars_' regionName '_' file_suffix];
-    if exist(scfile, 'file')
-        delete(scfile);
+    if hist_n_out > 0
+        time_out = [time_hist(hist_start+1 : end); time_model(:)];
+    else
+        time_out = time_model(:);
+    end
+    nominal_yrs = decode_years(time_out, time_units) - 1;
+    year_start  = nominal_yrs(1);
+    year_end    = nominal_yrs(end);
+    file_stem   = sprintf('%s_%s_%s_%s_%s_%s_%s_%s_%d-%d', ...
+                          region, group, model, modelid, esm, forcingid, ...
+                          exp, configid, year_start, year_end);
+
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Write NetCDF output — one file per SLC method
+
+    nc_vars = { ...
+        'slvaf', 'Sea level contribution based on Vaf',   sl_VAF; ...
+        'slg20', 'Sea level contribution based on G2020', sl_G20; ...
+        'sla20', 'Sea level contribution based on A2020', sl_A20; ...
+    };
+    for iv = 1:size(nc_vars, 1)
+        varname   = nc_vars{iv,1};
+        long_name = nc_vars{iv,2};
+        sl_data   = nc_vars{iv,3};
+        scfile = fullfile(outpath, [varname '_' regionName '_' file_stem '.nc']);
+        if exist(scfile, 'file'), delete(scfile); end
+        nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4');
+        nccreate(scfile, varname,  'Dimensions', {'time', Inf});
+        ncwrite(scfile,  'time',   time_out(:));
+        ncwrite(scfile,  varname,  sl_data(:));
+        ncwriteatt(scfile, '/',      'description', file_description);
+        ncwriteatt(scfile, 'time',   'units',        time_units);
+        ncwriteatt(scfile, 'time',   'long_name',    time_long_name);
+        ncwriteatt(scfile, 'time',   'calendar',     time_calendar);
+        ncwriteatt(scfile, varname,  'long_name',    long_name);
+        ncwriteatt(scfile, varname,  'units',        'm');
+        fprintf('Created file %s\n', scfile);
     end
 
-    nccreate(scfile, 'time',      'Dimensions', {'time', Inf}, 'Format', 'netcdf4');
-    nccreate(scfile, 'slc_VAF',   'Dimensions', {'time', Inf});
-    nccreate(scfile, 'slc_G2020', 'Dimensions', {'time', Inf});
-    nccreate(scfile, 'slc_A2020', 'Dimensions', {'time', Inf});
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Write CSV output — one file per SLC method
 
-    ncwrite(scfile, 'time',      time_model(:));
-    ncwrite(scfile, 'slc_VAF',   sl_VAF(:));
-    ncwrite(scfile, 'slc_G2020', sl_G20(:));
-    ncwrite(scfile, 'slc_A2020', sl_A20(:));
+    if ~exist(csvpath, 'dir'), mkdir(csvpath); end
+    region_col = 'ALL';
+    if ~strcmp(regionName, 'mm'), region_col = regionName; end
 
-    ncwriteatt(scfile, '/',         'description', file_description);
-    ncwriteatt(scfile, 'time',      'units',        time_units);
-    ncwriteatt(scfile, 'time',      'long_name',    time_long_name);
-    ncwriteatt(scfile, 'time',      'calendar',     time_calendar);
-    ncwriteatt(scfile, 'slc_VAF',   'long_name',    'Sea level contribution based on Vaf');
-    ncwriteatt(scfile, 'slc_VAF',   'units',        'm');
-    ncwriteatt(scfile, 'slc_G2020', 'long_name',    'Sea level contribution based on G2020');
-    ncwriteatt(scfile, 'slc_G2020', 'units',        'm');
-    ncwriteatt(scfile, 'slc_A2020', 'long_name',    'Sea level contribution based on A2020');
-    ncwriteatt(scfile, 'slc_A2020', 'units',        'm');
+    meta_keys = {'ice_source','region','group','model','model_variant','scenario','GCM','forcingid','configid'};
+    meta_vals = {region, region_col, group, model, modelid, exp, esm, forcingid, configid};
+    csv_years = 1850:2300;
 
-    fprintf('Created file %s\n', scfile);
+    csv_vars = { ...
+        'slvaf', sl_VAF; ...
+        'slg20', sl_G20; ...
+        'sla20', sl_A20; ...
+    };
+    for iv = 1:size(csv_vars, 1)
+        varname  = csv_vars{iv,1};
+        sl_data  = csv_vars{iv,2};
+        csvfile  = fullfile(csvpath, [varname '_' regionName '_' file_stem '.csv']);
+        fid      = fopen(csvfile, 'w');
+        % Header
+        fprintf(fid, '%s', strjoin([meta_keys, arrayfun(@(y) sprintf('y%d',y), csv_years, 'UniformOutput', false)], ','));
+        fprintf(fid, '\n');
+        % Data row — metadata
+        for k = 1:length(meta_vals)
+            fprintf(fid, '%s,', meta_vals{k});
+        end
+        % Annual values
+        year_map = containers.Map(nominal_yrs, num2cell(sl_data(:)));
+        for iy = 1:length(csv_years)
+            y = csv_years(iy);
+            if isKey(year_map, y)
+                val = year_map(y);
+                if iy < length(csv_years)
+                    fprintf(fid, '%.10g,', val);
+                else
+                    fprintf(fid, '%.10g', val);
+                end
+            else
+                if iy < length(csv_years)
+                    fprintf(fid, 'NA,');
+                else
+                    fprintf(fid, 'NA');
+                end
+            end
+        end
+        fprintf(fid, '\n');
+        fclose(fid);
+        fprintf('Created file %s\n', csvfile);
+    end
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Local functions — year decoding
+
+function yrs = decode_years(t, units)
+% Decode a time vector to calendar years using MATLAB datetime (calendar-aware).
+    tok = regexp(units, 'since\s+(\d{4})-(\d{2})-(\d{2})', 'tokens');
+    if ~isempty(tok)
+        origin = datetime(str2double(tok{1}{1}), str2double(tok{1}{2}), str2double(tok{1}{3}));
+    else
+        tok = regexp(units, 'since\s+(\d{4})', 'tokens');
+        if isempty(tok)
+            error('Cannot parse origin from time units: %s', units);
+        end
+        origin = datetime(str2double(tok{1}{1}), 1, 1);
+    end
+    if contains(units, 'day')
+        dt = origin + days(t);
+    elseif contains(units, 'year')
+        dt = origin + years(t);
+    else
+        error('Unsupported time unit: %s', units);
+    end
+    yrs = year(dt);
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Local functions — file discovery
+
+function fpath = find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid, experiment, configid)
+% Find new-format ISMIP7 file by glob, ignoring the timerange field.
+    pattern = fullfile(dirpath, [var '_' region '_' group '_' model '_' modelid '_' esm '_' forcingid '_' experiment '_' configid '_*.nc']);
+    d = dir(pattern);
+    if isempty(d)
+        error('No file found:\n  %s', pattern);
+    end
+    if length(d) > 1
+        error('Multiple files match for %s — cannot disambiguate:\n  %s', var, pattern);
+    end
+    fpath = fullfile(d(1).folder, d(1).name);
 end
 
 
@@ -453,18 +619,7 @@ function [idx, found] = find_year_idx_safe(ncfile, varname, target_year)
             break;
         end
     end
-    tok = regexp(units, 'since\s+(\d{4})', 'tokens');
-    if isempty(tok)
-        error('Cannot parse origin year from time units: %s', units);
-    end
-    origin_year = str2double(tok{1}{1});
-    if contains(units, 'day')
-        yr = floor(origin_year + t / 365.25);
-    elseif contains(units, 'year')
-        yr = floor(origin_year + t);
-    else
-        error('Unsupported time unit: %s', units);
-    end
+    yr = decode_years(t, units);
     hits = find(yr == target_year);
     if isempty(hits)
         idx   = 0;
