@@ -170,7 +170,22 @@ Ocean area normalization uses `oarea = 3.625 × 10¹⁴ m²` (Gregory et al. 201
 
 ## Testing
 
-After running both Python and MATLAB versions for the same submission, compare outputs:
+**Smoke test** — lightweight MINI suite, no external data required:
+
+```bash
+cd manual-tests
+conda run -n nc python3 test_mini.py
+```
+
+**Integration tests** — require model output under `Data/` and `Models/` (defaults use the VUW/PISM1 AIS reference run):
+
+```bash
+cd manual-tests
+conda run -n nc python3 test_histout.py --datapath ../Data/AIS --modelpath ../Models/AIS
+conda run -n nc python3 test_refyear.py --datapath ../Data/AIS --modelpath ../Models/AIS
+```
+
+**Python vs MATLAB comparison** — after running both implementations for the same submission:
 
 ```bash
 cd manual-tests
@@ -178,15 +193,7 @@ conda run -n nc python3 compare_outputs.py --region AIS
 conda run -n nc python3 compare_outputs.py --region GrIS
 ```
 
-The script matches files by their full ISMIP7 stem and checks all three SLC methods. Expected tolerance: < 1 × 10⁻¹⁰ m.
-
-Integration tests for `--histout` and `--refyear` (require `--datapath` and `--modelpath`):
-
-```bash
-cd manual-tests
-conda run -n nc python3 test_histout.py --datapath <path> --modelpath <path>
-conda run -n nc python3 test_refyear.py --datapath <path> --modelpath <path>
-```
+The comparison script matches files by their full ISMIP7 stem and checks all three SLC methods. Expected tolerance: < 1 × 10⁻¹⁰ m.
 
 ## Converting old-format submissions
 
