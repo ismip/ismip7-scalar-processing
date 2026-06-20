@@ -10,11 +10,11 @@ Runs scalars.py four times (--histout 0, 1, -1, 9999) and checks:
 Usage (run from manual-tests/ or any directory):
     python test_histout.py --datapath <path> --modelpath <path>
 
-Optional overrides (defaults match VUW/PISM1/expAE04 AIS run):
+Optional overrides (defaults match VUW/PISM1/ssp585 AIS run):
     --region  AIS|GrIS   (default: AIS)
     --lab     <lab>      (default: VUW)
     --model   <model>    (default: PISM1)
-    --exp     <exp>      (default: expAE04)
+    --exp     <exp>      (default: ssp585)
     --hist    <hist>     (default: historical)
 """
 
@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--region",    default="AIS")
 parser.add_argument("--lab",       default="VUW")
 parser.add_argument("--model",     default="PISM1")
-parser.add_argument("--exp",       default="expAE04")
+parser.add_argument("--exp",       default="ssp585")
 parser.add_argument("--hist",      default="historical")
 parser.add_argument("--datapath",  required=True)
 parser.add_argument("--modelpath", required=True)
