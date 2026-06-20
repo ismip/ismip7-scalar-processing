@@ -1,8 +1,8 @@
 # ISMIP7 Scalar Processing
 
-Scripts for computing sea-level contributions (SLC) and other scalar variables from ISMIP7 ice sheet model output for the Antarctic Ice Sheet (AIS) and Greenland Ice Sheet (GrIS). All scripts expect ISMIP7-compliant model output on the diagnostic ISMIP grid following ISMIP7 conventions for file names and units.
+Scripts for computing sea-level contributions (SLC) and other scalar variables from ISMIP7 ice sheet model output for the Antarctic Ice Sheet (AIS) and Greenland Ice Sheet (GrIS). All scripts expect ISMIP7-compliant model output on the diagnostic ISMIP grid following the **new ISMIP7 naming conventions** (10-field filename, see below).
 
-Three parallel implementations are provided: **Python** (primary), **NCO/bash** (GrIS only), and **MATLAB**.
+Three parallel implementations are provided: **Python** (primary), **NCO/bash** (GrIS only), and **MATLAB**. Conversion scripts for older (ISMIP6) submissions live in the sibling repo `convert-submissions-ismip6-to-ismip7`.
 
 ## Requirements
 
@@ -32,8 +32,8 @@ ismip7-scalar-processing/                        # repository root
 │   ├── MINI0/
 │   └── MINI1/
 ├── Models/                                      # default location for model output
-│   ├── AIS/{lab}/{model}/{exp}_{res}/
-│   ├── GrIS/{lab}/{model}/{exp}_{res}/
+│   ├── AIS/{group}/{model}/{exp_group}/
+│   ├── GrIS/{group}/{model}/{exp_group}/
 │   └── MINI/ISMIP7/{MINI0,MINI1}/{exp}/
 └── manual-tests/
     ├── compare_outputs.py                       # Python vs MATLAB comparison (--region filter)
@@ -53,6 +53,32 @@ ismip7-scalar-processing/                        # repository root
             └── gdf_ISMIP7_MINI1.txt
 ```
 
+## ISMIP7 filename convention
+
+Model output files follow the new 10-field ISMIP7 naming convention:
+
+```
+{var}_{region}_{group}_{model}_{modelid}_{ESM}_{forcingid}_{experiment}_{configid}_{startyear}-{endyear}.nc
+```
+
+Example: `lithk_GrIS_NORCE_CISM08-MAR312-p50_m001_NorESM2-MM_f001_historical_E001_1960-2014.nc`
+
+| Field | Meaning | Example |
+|-------|---------|---------|
+| `{group}` | Submitting institution | `NORCE` |
+| `{model}` | Ice sheet model | `CISM08-MAR312-p50` |
+| `{modelid}` | ISM member ID (`mNNN`) | `m001` |
+| `{ESM}` | Climate forcing model (CMIP6/7) | `NorESM2-MM` |
+| `{forcingid}` | Forcing realization (`fNNN`) | `f001` |
+| `{experiment}` | Scenario | `historical`, `ssp126`, `ctrl` |
+| `{configid}` | Configuration counter (`[C/E/P]NNN`) | `E001` |
+| `{startyear}-{endyear}` | Nominal simulation years | `1960-2014` |
+
+Files are stored under `Models/{region}/{group}/{model}/{exp_group}/` where `{exp_group}` is one of `CORE`, `ESM`, or `PPE`.
+
+**Time encoding:** ST (state) variables carry timestamps at Jan 1 of year N+1; FL (flux) variables carry timestamps at Jul 1 of year N with `time_bounds`. The filename year range always refers to nominal simulation years (ST timestamp year − 1).
+
+
 ## Running the scripts
 
 All scripts accept CLI arguments; the default settings match the NORCE/CISM08-MAR312-p50 (GrIS) and VUW/PISM1 (AIS) reference configurations.
@@ -63,10 +89,12 @@ All scripts accept CLI arguments; the default settings match the NORCE/CISM08-MA
 cd python
 conda run -n nc python3 scalars.py --region AIS
 conda run -n nc python3 scalars.py --region GrIS
-conda run -n nc python3 scalars.py --region AIS --lab ISMIP7 --model TEST --exp exp0 --hist historical
+conda run -n nc python3 scalars.py --region GrIS --group NORCE --model CISM08-MAR312-p50 \
+  --modelid m001 --esm NorESM2-MM --forcingid f001 --experiment historical --configid E001 \
+  --exp-group ESM
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--lab`, `--model`, `--exp`, `--hist`, `--refyear`, `--histout`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
 
 Output is written to `./output/` relative to the script directory.
 
@@ -78,7 +106,7 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
-Set workspace variables before `run()` to override any default (`lab`, `model`, `exp`, `hist`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
+Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
 
 ### NCO/bash (GrIS only)
 
@@ -147,4 +175,15 @@ Integration tests for `--histout` and `--refyear` (require `--datapath` and `--m
 cd manual-tests
 conda run -n nc python3 test_histout.py --datapath <path> --modelpath <path>
 conda run -n nc python3 test_refyear.py --datapath <path> --modelpath <path>
+```
+
+## Converting old-format submissions
+
+Conversion scripts for old-format (ISMIP6, 5-field naming) submissions live in the separate repo `convert-submissions-ismip6-to-ismip7` (sibling directory). See that repo for usage.
+
+Converted files can be validated with the [ISM_SimulationChecker](https://github.com/ismip/ISM_SimulationChecker):
+
+```bash
+cd ISM_SimulationChecker
+python compliance_checker.py --source-path ../ismip7-scalar-processing/Models/GrIS/NORCE/CISM08-MAR312-p50/ESM --variable-list ismip7_xyt
 ```

@@ -4,26 +4,36 @@
 addpath('/nird/services/software/betzy/sw_rl9/software/MATLAB/2024a/toolbox/matlab/matlab_sci/netcdf'); % ncread/nccreate/ncwrite/ncwriteatt
 
 % User settings — set any of these in the workspace before run() to override defaults
-if ~exist('region',    'var'), region    = 'AIS';       end
-if ~exist('hist',      'var'), hist      = 'historical'; end
-if ~exist('refyear',   'var'), refyear   = [];           end  % [] = last timestep of hist
-if ~exist('res',       'var'), res       = '08';         end
-if ~exist('outpath',   'var'), outpath   = './output';   end
+if ~exist('region',        'var'), region        = 'AIS';       end
+if ~exist('hist',          'var'), hist          = 'historical'; end
+if ~exist('refyear',       'var'), refyear       = [];           end  % [] = last timestep of hist
+if ~exist('res',           'var'), res           = '08';         end
+if ~exist('outpath',       'var'), outpath       = './output';   end
 
 % Region-specific defaults
 switch region
     case 'AIS'
-        def_lab   = 'VUW';   def_model = 'PISM1';             def_exp = 'expAE04';
+        def_group     = 'VUW';   def_model = 'PISM1';             def_exp = 'expAE04';
+        def_modelid   = 'm001';  def_esm   = 'CESM2-WACCM';
+        def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
     case 'GrIS'
-        def_lab   = 'NORCE'; def_model = 'CISM08-MAR312-p50'; def_exp = 'historical';
+        def_group     = 'NORCE'; def_model = 'CISM08-MAR312-p50'; def_exp = 'historical';
+        def_modelid   = 'm001';  def_esm   = 'NorESM2-MM';
+        def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
     otherwise
         error('Unknown region: %s. Choose AIS or GrIS.', region);
 end
-if ~exist('lab',       'var') || isempty(lab),       lab       = def_lab;                end
-if ~exist('model',     'var') || isempty(model),     model     = def_model;              end
-if ~exist('exp',       'var') || isempty(exp),       exp       = def_exp;                end
-if ~exist('datapath',  'var') || isempty(datapath),  datapath  = ['../Data/'   region]; end
-if ~exist('modelpath', 'var') || isempty(modelpath), modelpath = ['../Models/' region]; end
+if ~exist('group',         'var') || isempty(group),         group         = def_group;                end
+if ~exist('model',         'var') || isempty(model),         model         = def_model;                end
+if ~exist('exp',           'var') || isempty(exp),           exp           = def_exp;                  end
+if ~exist('modelid',       'var') || isempty(modelid),       modelid       = def_modelid;              end
+if ~exist('esm',           'var') || isempty(esm),           esm           = def_esm;                  end
+if ~exist('forcingid',     'var') || isempty(forcingid),     forcingid     = def_forcingid;            end
+if ~exist('configid',      'var') || isempty(configid),      configid      = def_configid;             end
+if ~exist('exp_group',     'var') || isempty(exp_group),     exp_group     = def_exp_group;            end
+if ~exist('hist_exp_group','var') || isempty(hist_exp_group),hist_exp_group = exp_group;               end
+if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
+if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
 
 % What output to produce
 flg_mm = true;  % Integrals on model mask
@@ -56,7 +66,7 @@ switch region
         basininput = [datapath '/basins_GrIS_Mouginot_extended_'      res '000m_v1.nc'];
         gicinput   = [datapath '/iaf2_GIC_GrIS_'                      res '000m_v0.nc'];
 end
-file_suffix = [region '_' lab '_' model '_' exp '_' res '000m.nc'];
+file_suffix = [region '_' group '_' model '_' exp '_' res '000m.nc'];
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare generic data
@@ -133,9 +143,10 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare model output
 
-exppath = [modelpath '/' lab '/' model '/' exp '_' res];
+exppath  = [modelpath '/' group '/' model '/' exp_group];
+histpath = [modelpath '/' group '/' model '/' hist_exp_group];
 
-lithk_file = [exppath '/lithk_' region '_' lab '_' model '_' exp '.nc'];
+lithk_file = find_model_file(exppath, 'lithk', region, group, model, modelid, esm, forcingid, exp, configid);
 lithk      = double(ncread(lithk_file, 'lithk')); % (nx, ny, nt)
 time_model = double(ncread(lithk_file, 'time'));
 
@@ -152,13 +163,12 @@ for i = 1:length(time_info.Attributes)
     end
 end
 
-topg = double(ncread([exppath '/topg_' region '_' lab '_' model '_' exp '.nc'], 'topg')); % (nx, ny, nt)
+topg = double(ncread(find_model_file(exppath, 'topg', region, group, model, modelid, esm, forcingid, exp, configid), 'topg')); % (nx, ny, nt)
 
 % Historical experiment
-histpath        = [modelpath '/' lab '/' model '/' hist '_' res];
-hist_lithk_file = [histpath '/lithk_' region '_' lab '_' model '_' hist '.nc'];
+hist_lithk_file = find_model_file(histpath, 'lithk', region, group, model, modelid, esm, forcingid, hist, configid);
 lithk_hist_all  = double(ncread(hist_lithk_file, 'lithk'));
-topg_hist_all   = double(ncread([histpath '/topg_' region '_' lab '_' model '_' hist '.nc'], 'topg'));
+topg_hist_all   = double(ncread(find_model_file(histpath, 'topg', region, group, model, modelid, esm, forcingid, hist, configid), 'topg'));
 n_hist          = size(lithk_hist_all, 3);
 
 ref_in_exp  = false;
@@ -187,16 +197,16 @@ if ref_in_exp
 end
 
 % Model density parameters
-params_file = [modelpath '/' lab '/' model '/params.nc'];
+params_file = [modelpath '/' group '/' model '/params.nc'];
 c.RHOI  = double(ncread(params_file, 'rhoi'));
 c.RHOSW = double(ncread(params_file, 'rhow'));
 c.RHOFW = double(ncread(params_file, 'rhof'));
 c.AO    = oarea;
 
 % Model masks (loaded for completeness; not used in SLC computation)
-sftgif = double(ncread([exppath '/sftgif_' region '_' lab '_' model '_' exp '.nc'], 'sftgif'));
-sftgrf = double(ncread([exppath '/sftgrf_' region '_' lab '_' model '_' exp '.nc'], 'sftgrf'));
-sftflf = double(ncread([exppath '/sftflf_' region '_' lab '_' model '_' exp '.nc'], 'sftflf'));
+sftgif = double(ncread(find_model_file(exppath, 'sftgif', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgif'));
+sftgrf = double(ncread(find_model_file(exppath, 'sftgrf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgrf'));
+sftflf = double(ncread(find_model_file(exppath, 'sftflf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftflf'));
 
 if verbose
     fprintf('# Generic\n');
@@ -336,6 +346,23 @@ for ireg = 1:length(regionNames)
     ncwriteatt(scfile, 'slc_A2020', 'units',        'm');
 
     fprintf('Created file %s\n', scfile);
+end
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Local functions — file discovery
+
+function fpath = find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid, experiment, configid)
+% Find new-format ISMIP7 file by glob, ignoring the timerange field.
+    pattern = fullfile(dirpath, [var '_' region '_' group '_' model '_' modelid '_' esm '_' forcingid '_' experiment '_' configid '_*.nc']);
+    d = dir(pattern);
+    if isempty(d)
+        error('No file found:\n  %s', pattern);
+    end
+    if length(d) > 1
+        error('Multiple files match for %s — cannot disambiguate:\n  %s', var, pattern);
+    end
+    fpath = fullfile(d(1).folder, d(1).name);
 end
 
 
