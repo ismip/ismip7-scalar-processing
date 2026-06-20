@@ -217,6 +217,10 @@ end
 
 % Model density parameters
 params_file = [modelpath '/' group '/' model '/params.nc'];
+if ~isfile(params_file)
+    error('Missing params.nc for %s/%s.\n  Expected: %s\n  Generate it with: bash tools/set_params.sh', ...
+          group, model, params_file);
+end
 c.RHOI  = double(ncread(params_file, 'rhoi'));
 c.RHOSW = double(ncread(params_file, 'rhow'));
 c.RHOFW = double(ncread(params_file, 'rhof'));

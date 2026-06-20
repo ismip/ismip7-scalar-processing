@@ -279,7 +279,14 @@ if ref_in_exp:
     topg_ref  = topg[ref_idx_exp,:,:]
 
 # Add model params
-idat = nc.Dataset(modelpath + "/" + group + "/" + model + "/params.nc", 'r')
+params_file = modelpath + "/" + group + "/" + model + "/params.nc"
+if not os.path.exists(params_file):
+    raise FileNotFoundError(
+        f"Missing params.nc for {group}/{model}.\n"
+        f"  Expected: {params_file}\n"
+        f"  Generate it with: bash tools/set_params.sh"
+    )
+idat = nc.Dataset(params_file, 'r')
 scalar = idat.variables["rhoi"]; rhoi = scalar[()]
 scalar = idat.variables["rhow"]; rhow = scalar[()]
 scalar = idat.variables["rhof"]; rhof = scalar[()]
