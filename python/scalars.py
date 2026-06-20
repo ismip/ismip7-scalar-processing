@@ -6,6 +6,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 import argparse
+import csv
 import glob
 import netCDF4 as nc
 import numpy as np
@@ -79,6 +80,7 @@ res       = args.res
 datapath  = args.datapath  if args.datapath  else "../Data/" + region
 modelpath = args.modelpath if args.modelpath else "../Models/" + region
 outpath   = args.outpath
+csvpath   = os.path.join(os.path.dirname(outpath), "csv")
 histout   = args.histout
 
 
@@ -117,7 +119,7 @@ af2input   = datapath + "/" + cfg["af2"].format(res=res)
 mminput    = datapath + "/" + cfg["maxmask"].format(res=res)
 gicinput   = datapath + "/" + cfg["gic"].format(res=res)
 basininput = datapath + "/" + cfg["basins"].format(res=res)
-file_suffix = region + "_" + group + "_" + model + "_" + exp + "_" + res + "000m.nc"
+# file_stem built after time_out is known (year range derived from output time axis)
 
 ####################################################
 # Prepare generic data file
@@ -417,30 +419,65 @@ for regionName, region_mask in vars(regions).items():
 
     time_out = np.concatenate([time_hist[hist_start:], time_model]) if hist_n_out > 0 else time_model
 
-    scfile = outpath + "/scalars_" + regionName + "_" + file_suffix
-    ds = nc.Dataset(scfile, 'w', format='NETCDF4')
-    ds.createDimension('time', None)
-    # Variables
-    var_time  = ds.createVariable('time',     'float', ('time'), zlib=True)
-    var_VAF   = ds.createVariable('slc_VAF',  'float', ('time'), zlib=True)
-    var_G2020 = ds.createVariable('slc_G2020','float', ('time'), zlib=True)
-    var_A2020 = ds.createVariable('slc_A2020','float', ('time'), zlib=True)
-    # Attributes
-    ds.description = file_description
-    var_time.units     = time_units
-    var_time.long_name = time_long_name
-    var_time.calendar  = time_calendar
-    var_VAF.long_name   = 'Sea level contribution based on Vaf'
-    var_VAF.units       = 'm'
-    var_G2020.long_name = 'Sea level contribution based on G2020'
-    var_G2020.units     = 'm'
-    var_A2020.long_name = 'Sea level contribution based on A2020'
-    var_A2020.units     = 'm'
-    # assign data
-    var_time[:]  = time_out
-    var_VAF[:]   = sl_VAF[:]
-    var_G2020[:] = sl_G20[:]
-    var_A2020[:] = sl_A20[:]
+    # Build filename from full ISMIP7 fields + nominal year range
+    # ST timestamps are Jan 1 of year N+1, so nominal year = decoded year - 1
+    dates_out  = nc.num2date(time_out, time_units, calendar=time_calendar)
+    year_start = dates_out[0].year  - 1
+    year_end   = dates_out[-1].year - 1
+    file_stem  = (f"{region}_{group}_{model}_{modelid}_{esm}_{forcingid}"
+                  f"_{exp}_{configid}_{year_start}-{year_end}")
 
-    ds.close()
-    print("Created file ", scfile)
+    for varname, long_name, sl_array in [
+        ("slvaf", "Sea level contribution based on Vaf",   sl_VAF),
+        ("slg20", "Sea level contribution based on G2020", sl_G20),
+        ("sla20", "Sea level contribution based on A2020", sl_A20),
+    ]:
+        scfile = outpath + "/" + varname + "_" + regionName + "_" + file_stem + ".nc"
+        ds = nc.Dataset(scfile, 'w', format='NETCDF4')
+        ds.createDimension('time', None)
+        ds.description = file_description
+        var_time = ds.createVariable('time',   'float', ('time',), zlib=True)
+        var_slc  = ds.createVariable(varname,  'float', ('time',), zlib=True)
+        var_time.units     = time_units
+        var_time.long_name = time_long_name
+        var_time.calendar  = time_calendar
+        var_slc.long_name  = long_name
+        var_slc.units      = 'm'
+        var_time[:]  = time_out
+        var_slc[:]   = sl_array[:]
+        ds.close()
+        print("Created file ", scfile)
+
+    ###############################################
+    # Write CSV files (one per SLC method)
+
+    csv_years   = range(1850, 2301)
+    nominal_yrs = [d.year - 1 for d in dates_out]
+    region_col  = "ALL" if regionName == "mm" else regionName
+
+    meta = {
+        "ice_source":    region,
+        "region":        region_col,
+        "group":         group,
+        "model":         model,
+        "model_variant": modelid,
+        "scenario":      exp,
+        "GCM":           esm,
+        "forcingid":     forcingid,
+        "configid":      configid,
+    }
+    meta_keys = list(meta.keys())
+    header = meta_keys + [f"y{y}" for y in csv_years]
+
+    os.makedirs(csvpath, exist_ok=True)
+    for varname, sl_array in [("slvaf", sl_VAF), ("slg20", sl_G20), ("sla20", sl_A20)]:
+        year_to_slc = dict(zip(nominal_yrs, sl_array))
+        row = [meta[k] for k in meta_keys] + [
+            year_to_slc[y] if y in year_to_slc else "NA" for y in csv_years
+        ]
+        csvfile = csvpath + "/" + varname + "_" + regionName + "_" + file_stem + ".csv"
+        with open(csvfile, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            writer.writerow(row)
+        print("Created file ", csvfile)
