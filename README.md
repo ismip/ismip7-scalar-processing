@@ -96,7 +96,18 @@ conda run -n nc python3 scalars.py --region GrIS --group NORCE --model CISM08-MA
 
 Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
 
-Output is written to `./output/` relative to the script directory.
+Output is written to `./output/` (NetCDF) and `./csv/` (CSV) relative to the script directory. Six files are produced per ice-sheet mask region (three NetCDF + three CSV, one per SLC method):
+
+```
+output/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
+output/slg20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
+output/sla20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
+csv/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
+csv/slg20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
+csv/sla20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
+```
+
+where `{mask}` is `mm` (whole ice sheet) or a basin name, and `{y0}-{y1}` is the nominal simulation year range covered by the output (historical reference year through end of projection). Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period).
 
 ### MATLAB
 
@@ -159,7 +170,7 @@ Ocean area normalization uses `oarea = 3.625 × 10¹⁴ m²` (Gregory et al. 201
 
 ## Testing
 
-After running both Python and MATLAB versions, compare outputs:
+After running both Python and MATLAB versions for the same submission, compare outputs:
 
 ```bash
 cd manual-tests
@@ -167,7 +178,7 @@ conda run -n nc python3 compare_outputs.py --region AIS
 conda run -n nc python3 compare_outputs.py --region GrIS
 ```
 
-Expected tolerance: < 1 × 10⁻¹⁰ m.
+The script matches files by their full ISMIP7 stem and checks all three SLC methods. Expected tolerance: < 1 × 10⁻¹⁰ m.
 
 Integration tests for `--histout` and `--refyear` (require `--datapath` and `--modelpath`):
 
