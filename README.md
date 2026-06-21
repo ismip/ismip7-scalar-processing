@@ -9,8 +9,7 @@ Two implementations are provided: **Python** (primary) and **MATLAB**. Conversio
 ```bash
 conda create -n nc
 conda activate nc
-conda install -c conda-forge cdo=2.4.4 nco netCDF4 scipy
-pip install pytest   # for running the test suite
+conda install -c conda-forge cdo=2.4.4 nco netCDF4 scipy pytest
 ```
 
 ## Input data
@@ -210,7 +209,6 @@ The `tests/` directory contains a `pytest` suite that runs on every push via CI.
 It requires only `pytest` in addition to the standard conda environment:
 
 ```bash
-conda run -n nc pip install pytest   # one-time
 conda run -n nc pytest tests/ -v
 ```
 
