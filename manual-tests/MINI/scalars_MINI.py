@@ -50,9 +50,6 @@ flg_bm = False  # IMBIE3 basins
 file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no"
 
 # Options
-# Remove GIC contribution
-flg_GICmask = True  # [Default True!]
-
 # A2020: stepwise cumulative (True, default) vs. all relative to reference (False)
 flg_A20_cumul = True
 
@@ -89,11 +86,10 @@ regions.mm = sheet
 idat = nc.Dataset(af2input, 'r')
 af2 = idat.variables["af2"][:,:]
 idat.close()
-# include GIC masking if requested
-if flg_GICmask:
-    idat = nc.Dataset(gicinput, 'r')
-    iaf2GIC = idat.variables["iaf2"][:,:]
-    idat.close()
+# GIC mask: always loaded (used unconditionally in the region loop)
+idat = nc.Dataset(gicinput, 'r')
+iaf2GIC = idat.variables["iaf2"][:,:]
+idat.close()
 
 ###########################################################
 # Prepare model output
@@ -157,8 +153,7 @@ if verbose:
     print("# Generic")
     print("af2:", af2.shape)
     print("maxmask1:", maxmask1.shape)
-    if flg_GICmask:
-        print("iaf2GIC:", iaf2GIC.shape)
+    print("iaf2GIC:", iaf2GIC.shape)
     print("# Model")
     print("lithk_ref:", lithk_ref.shape)
     print("topg_ref:", topg_ref.shape)
@@ -195,7 +190,6 @@ for regionName, region_mask in vars(regions).items():
     if flg_A20_cumul:
         H_prev = H0.copy()
         B_prev = B0.copy()
-        S_prev = S0.copy()
         A20_cumsum = 0.0
 
     for n in range(0, nt):
@@ -206,11 +200,10 @@ for regionName, region_mask in vars(regions).items():
         VAF_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
         G20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
         if flg_A20_cumul:
-            A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S_prev, S_prev, A, c)
+            A20_cumsum += slc_A2020.get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c)
             A20_list.append(A20_cumsum)
             H_prev = H.copy()
             B_prev = B.copy()
-            S_prev = S_prev  # sea level fixed at 0, no update needed
         else:
             # A2020 relative to reference state, like G2020 and VAF
             A20_list.append(slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
@@ -240,13 +233,13 @@ for regionName, region_mask in vars(regions).items():
     ds = nc.Dataset(scfile, 'w', format='NETCDF4')
     ds.createDimension('time', None)
     # Variables
-    var_time  = ds.createVariable('time',     'float', ('time'), zlib=True)
-    var_VAF   = ds.createVariable('slc_VAF',  'float', ('time'), zlib=True)
-    var_G2020 = ds.createVariable('slc_G2020','float', ('time'), zlib=True)
-    var_A2020 = ds.createVariable('slc_A2020','float', ('time'), zlib=True)
-    var_Vtot  = ds.createVariable('slc_Vtot', 'float', ('time'), zlib=True)
-    var_Vgr   = ds.createVariable('slc_Vgr',  'float', ('time'), zlib=True)
-    var_Vfl   = ds.createVariable('slc_Vfl',  'float', ('time'), zlib=True)
+    var_time  = ds.createVariable('time',     'f8', ('time',), zlib=True)
+    var_VAF   = ds.createVariable('slc_VAF',  'f8', ('time',), zlib=True)
+    var_G2020 = ds.createVariable('slc_G2020','f8', ('time',), zlib=True)
+    var_A2020 = ds.createVariable('slc_A2020','f8', ('time',), zlib=True)
+    var_Vtot  = ds.createVariable('slc_Vtot', 'f8', ('time',), zlib=True)
+    var_Vgr   = ds.createVariable('slc_Vgr',  'f8', ('time',), zlib=True)
+    var_Vfl   = ds.createVariable('slc_Vfl',  'f8', ('time',), zlib=True)
     # Attributes
     ds.description = file_description
     var_time.units     = time_units

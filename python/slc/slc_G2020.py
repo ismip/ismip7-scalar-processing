@@ -69,8 +69,8 @@ def get_slc_G2020(H0,H,B0,B,A,c):
 
 # grounded ice volume change 
 def get_vgr_G2020(H,B,A,c):
-  # eq. 4 in https://doi.org/10.5194/tc-14-833-2020  
-    mask_gr = H > (B)*c.RHOSW/c.RHOI 
+  # eq. 4 in https://doi.org/10.5194/tc-14-833-2020
+    mask_gr = H > (-B)*c.RHOSW/c.RHOI
     vol = np.sum((H*A)[ mask_gr ])
     return vol
 

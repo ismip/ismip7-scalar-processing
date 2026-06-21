@@ -73,7 +73,7 @@ Example: `lithk_GrIS_NORCE_CISM16x-MAR312-p50_m001_CESM2-WACCM_f001_ssp585_E001_
 | Field | Meaning | Example |
 |-------|---------|---------|
 | `{group}` | Submitting institution | `NORCE` |
-| `{model}` | Ice sheet model | `CISM08-MAR312-p50` |
+| `{model}` | Ice sheet model | `CISM16x-MAR312-p50` |
 | `{modelid}` | ISM member ID (`mNNN`) | `m001` |
 | `{ESM}` | Climate forcing model (CMIP6/7) | `NorESM2-MM` |
 | `{forcingid}` | Forcing realization (`fNNN`) | `f001` |
@@ -149,7 +149,11 @@ Set workspace variables before `run()` to override any default (`group`, `model`
 Each model directory must contain a `params.nc` file with ice (`rhoi`), ocean (`rhow`), and freshwater (`rhof`) densities. Use `tools/set_params.sh` to generate one from `tools/params_template.nc`:
 
 ```bash
-bash tools/set_params.sh
+bash tools/set_params.sh <region> <group> <model> [rhoi] [rhow] [rhof]
+
+# Examples:
+bash tools/set_params.sh GrIS NORCE CISM16x-MAR312-p50
+bash tools/set_params.sh AIS  VUW   PISM1 910 1028 1000
 ```
 
 ## MINI test suite
@@ -193,14 +197,27 @@ Ocean area normalization uses `oarea = 3.625 × 10¹⁴ m²` (Gregory et al. 201
 
 ## Testing
 
-**Smoke test** — lightweight MINI suite, no external data required:
+### Automatic tests (no external data needed)
+
+The `tests/` directory contains a `pytest` suite that runs on every push via CI.
+It requires only `pytest` in addition to the standard conda environment:
 
 ```bash
-cd manual-tests
-conda run -n nc python3 test_mini.py
+conda run -n nc pip install pytest   # one-time
+conda run -n nc pytest tests/ -v
 ```
 
-**Integration tests** — require model output under `Data/` and `Models/` (defaults use the VUW/PISM1 AIS reference run):
+This runs:
+- **`test_slc_units.py`** — unit tests for the `slc/` physics (VAF, G2020, A2020):
+  analytic cases with synthetic arrays (identical states → zero SLC, mass loss →
+  positive SLC, volume decomposition identity `Vtot = Vgr + Vfl`, etc.).
+- **`test_mini_smoke.py`** — integration smoke test for all four MINI combinations
+  (MINI0/MINI1 × exp0/expg), using input files committed to `test-data/`.
+
+### Manual integration tests
+
+These require model output under `Data/` and `Models/` (defaults use the VUW/PISM1
+AIS reference run):
 
 ```bash
 cd manual-tests
@@ -212,7 +229,9 @@ conda run -n nc python3 test_basins.py \
 
 `test_basins.py` is a fast static check (no model output needed): it loads the basin mask files and verifies that the sum of basin area weights equals the whole-sheet total. Accepts `--region AIS|GrIS` to test a single region.
 
-**Python vs MATLAB comparison** — run each implementation into a separate output tree, then compare:
+### Python vs MATLAB comparison
+
+Run each implementation into a separate output tree, then compare:
 
 ```bash
 conda run -n nc python3 python/scalars.py --region AIS --outpath Output-py
@@ -232,5 +251,5 @@ Converted files can be validated with the [ISM_SimulationChecker](https://github
 
 ```bash
 cd ISM_SimulationChecker
-python compliance_checker.py --source-path ../ismip7-scalar-processing/Models/GrIS/NORCE/CISM08-MAR312-p50/ESM --variable-list ismip7_xyt
+python compliance_checker.py --source-path ../ismip7-scalar-processing/Models/GrIS/NORCE/CISM16x-MAR312-p50/ESM --variable-list ismip7_xyt
 ```

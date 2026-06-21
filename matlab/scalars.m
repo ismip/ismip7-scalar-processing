@@ -15,8 +15,8 @@ if ~exist('flg_bm',        'var'), flg_bm        = false;        end  % IMBIE3 b
 % Region-specific defaults
 switch region
     case 'AIS'
-        def_group     = 'VUW';   def_model = 'PISM1';             def_exp = 'expAE04';
-        def_modelid   = 'm001';  def_esm   = 'CESM2-WACCM';
+        def_group     = 'VUW';   def_model = 'PISM1';             def_exp = 'ssp585';
+        def_modelid   = 'm001';  def_esm   = 'CESM2';
         def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
     case 'GrIS'
         def_group     = 'NORCE'; def_model = 'CISM16x-MAR312-p50'; def_exp = 'ssp585';
@@ -227,10 +227,18 @@ c.RHOSW = double(ncread(params_file, 'rhow'));
 c.RHOFW = double(ncread(params_file, 'rhof'));
 c.AO    = oarea;
 
-% Model masks (loaded for completeness; not used in SLC computation)
+% Model masks (used for ST scalars iareagr/iareafl)
 sftgif = double(ncread(find_model_file(exppath, 'sftgif', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgif'));
 sftgrf = double(ncread(find_model_file(exppath, 'sftgrf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgrf'));
 sftflf = double(ncread(find_model_file(exppath, 'sftflf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftflf'));
+
+% Load hist mask fields needed for ST scalars (iareagr, iareafl)
+sftgrf_hist = sftgrf;
+sftflf_hist = sftflf;
+if hist_n_out > 0 && ~strcmp(exp, hist)
+    sftgrf_hist = double(ncread(find_model_file(histpath, 'sftgrf', region, group, model, modelid, esm, forcingid, hist, configid), 'sftgrf'));
+    sftflf_hist = double(ncread(find_model_file(histpath, 'sftflf', region, group, model, modelid, esm, forcingid, hist, configid), 'sftflf'));
+end
 
 if verbose
     fprintf('# Generic\n');
@@ -437,6 +445,11 @@ for igic = 1:2
         meta_keys = {'ice_source','region','group','model','model_variant','scenario','GCM','forcingid','configid'};
         meta_vals = {region, regionName, group, model, modelid, exp, esm, forcingid, configid};
         csv_years = 1850:2300;
+        out_of_range = nominal_yrs(nominal_yrs < csv_years(1) | nominal_yrs > csv_years(end));
+        if ~isempty(out_of_range)
+            fprintf('Warning: %d year(s) outside CSV window %d-%d will be dropped.\n', ...
+                    numel(out_of_range), csv_years(1), csv_years(end));
+        end
 
         csv_vars = { ...
             'slvaf', sl_VAF; ...
@@ -480,6 +493,218 @@ for igic = 1:2
         end
     end % region loop
 end % GIC mode loop
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% ST scalar variables (no GIC masking, plain display name)
+
+for ireg = 1:length(regionNames)
+    regionName_raw = regionNames{ireg};
+    region_mask    = regions.(regionName_raw);
+    if strcmp(regionName_raw, 'mm')
+        regionName = lower(region);
+    else
+        regionName = regionName_raw;
+    end
+
+    A = region_mask .* af2 .* (str2double(res) * 1000.0)^2;
+
+    lim_hist    = zeros(hist_n_out, 1);
+    limnsw_hist = zeros(hist_n_out, 1);
+    iareagr_hist = zeros(hist_n_out, 1);
+    iareafl_hist = zeros(hist_n_out, 1);
+
+    if hist_n_out > 0
+        for n = 1:hist_n_out
+            H  = lithk_hist_all(:,:, hist_start + n) .* maxmask1;
+            B  = topg_hist_all(:,:,  hist_start + n);
+            hf = max(-B, 0) * c.RHOSW / c.RHOI;
+            lim_hist(n)     = sum(H .* A, 'all') * c.RHOI;
+            limnsw_hist(n)  = sum(max(H - hf, 0) .* A, 'all') * c.RHOI;
+            iareagr_hist(n) = sum(sftgrf_hist(:,:, hist_start + n) .* A, 'all');
+            iareafl_hist(n) = sum(sftflf_hist(:,:, hist_start + n) .* A, 'all');
+        end
+    end
+
+    lim_list    = zeros(nt, 1);
+    limnsw_list = zeros(nt, 1);
+    iareagr_list = zeros(nt, 1);
+    iareafl_list = zeros(nt, 1);
+    for n = 1:nt
+        H  = lithk(:,:,n) .* maxmask1;
+        B  = topg(:,:,n);
+        hf = max(-B, 0) * c.RHOSW / c.RHOI;
+        lim_list(n)     = sum(H .* A, 'all') * c.RHOI;
+        limnsw_list(n)  = sum(max(H - hf, 0) .* A, 'all') * c.RHOI;
+        iareagr_list(n) = sum(sftgrf(:,:,n) .* A, 'all');
+        iareafl_list(n) = sum(sftflf(:,:,n) .* A, 'all');
+    end
+
+    st_vars = { ...
+        'lim',     'land_ice_mass',                          'kg', lim_hist,     lim_list; ...
+        'limnsw',  'land_ice_mass_not_displacing_sea_water', 'kg', limnsw_hist,  limnsw_list; ...
+        'iareagr', 'grounded_ice_sheet_area',                'm2', iareagr_hist, iareagr_list; ...
+        'iareafl', 'floating_ice_shelf_area',                'm2', iareafl_hist, iareafl_list; ...
+    };
+    for iv = 1:size(st_vars, 1)
+        varname   = st_vars{iv,1};
+        long_name = st_vars{iv,2};
+        units     = st_vars{iv,3};
+        hist_vals = st_vars{iv,4};
+        exp_vals  = st_vars{iv,5};
+        data_out  = [hist_vals; exp_vals];
+        if ~exist(ncpath, 'dir'), mkdir(ncpath); end
+        scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
+        if exist(scfile, 'file'), delete(scfile); end
+        nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'double');
+        nccreate(scfile, varname,  'Dimensions', {'time', Inf}, 'Datatype', 'double');
+        ncwrite(scfile,  'time',   time_out(:));
+        ncwrite(scfile,  varname,  data_out(:));
+        ncwriteatt(scfile, '/',      'description', file_description);
+        ncwriteatt(scfile, 'time',   'units',        time_units);
+        ncwriteatt(scfile, 'time',   'long_name',    time_long_name);
+        ncwriteatt(scfile, 'time',   'calendar',     time_calendar);
+        ncwriteatt(scfile, varname,  'long_name',    long_name);
+        ncwriteatt(scfile, varname,  'units',        units);
+        fprintf('Created file %s\n', scfile);
+    end
+end % ST region loop
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% FL scalar variables (no GIC masking)
+
+fl_scalar_specs = { ...
+    'tendacabf',       'acabf',       'tendency_of_land_ice_mass_due_to_surface_mass_balance',        'kg s-1'; ...
+    'tendlibmassbfgr', 'libmassbfgr', 'tendency_of_land_ice_mass_due_to_basal_mass_balance_grounded', 'kg s-1'; ...
+    'tendlibmassbffl', 'libmassbffl', 'tendency_of_land_ice_mass_due_to_basal_mass_balance_floating', 'kg s-1'; ...
+    'tendlicalvf',     'licalvf',     'tendency_of_land_ice_mass_due_to_calving',                     'kg s-1'; ...
+    'tendlifmassbf',   'lifmassbf',   'tendency_of_land_ice_mass_due_to_ice_front_melting',            'kg s-1'; ...
+};
+skipped_fl = {};
+
+for ifl = 1:size(fl_scalar_specs, 1)
+    tendvarname = fl_scalar_specs{ifl,1};
+    input_var   = fl_scalar_specs{ifl,2};
+    long_name   = fl_scalar_specs{ifl,3};
+    units       = fl_scalar_specs{ifl,4};
+
+    % Find exp FL file; skip variable if not found
+    try
+        fl_exp_file = find_model_file(exppath, input_var, region, group, model, modelid, esm, forcingid, exp, configid);
+    catch
+        skipped_fl{end+1} = tendvarname; %#ok<AGROW>
+        continue
+    end
+
+    % Load exp FL data + time axis
+    fl_exp      = double(ncread(fl_exp_file, input_var));  % (nx, ny, nt_fl)
+    fl_tv_info  = ncinfo(fl_exp_file, 'time');
+    fl_time_exp = double(ncread(fl_exp_file, 'time'));
+    fl_time_units     = '';
+    fl_time_long_name = '';
+    fl_time_calendar  = '';
+    for k = 1:length(fl_tv_info.Attributes)
+        switch fl_tv_info.Attributes(k).Name
+            case 'units',     fl_time_units     = fl_tv_info.Attributes(k).Value;
+            case 'long_name', fl_time_long_name = fl_tv_info.Attributes(k).Value;
+            case 'calendar',  fl_time_calendar  = fl_tv_info.Attributes(k).Value;
+        end
+    end
+
+    % Optionally load hist FL data
+    fl_hist      = [];
+    fl_time_hist = [];
+    if hist_n_out > 0 && ~strcmp(exp, hist)
+        try
+            fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, configid);
+            fl_hist      = double(ncread(fl_hist_file, input_var));
+            fl_time_hist = double(ncread(fl_hist_file, 'time'));
+        catch
+            % hist FL file missing; output exp period only
+        end
+    end
+
+    % Build FL time axis (same histout logic as ST, clamped to FL file length)
+    n_fl_hist = numel(fl_time_hist);
+    if ~isempty(fl_hist) && hist_n_out > 0
+        if histout == -1
+            fl_n_out = n_fl_hist;
+        else
+            fl_n_out = min(hist_n_out, n_fl_hist);
+            if fl_n_out < hist_n_out
+                fprintf('Warning: FL hist file for %s has %d steps; requested %d via histout — using %d\n', ...
+                        tendvarname, n_fl_hist, hist_n_out, fl_n_out);
+            end
+        end
+        fl_hist_start = n_fl_hist - fl_n_out;
+        fl_time_out_fl = [fl_time_hist(fl_hist_start+1 : end); fl_time_exp(:)];
+    else
+        fl_hist_start = n_fl_hist;
+        fl_time_out_fl = fl_time_exp(:);
+    end
+
+    % FL nominal year: Jul 1 of year N → year N (no -1 offset unlike ST)
+    fl_yrs = decode_years(fl_time_out_fl, fl_time_units);
+    fl_y0  = fl_yrs(1);
+    fl_y1  = fl_yrs(end);
+    fl_file_stem = sprintf('%s_%s_%s_%s_%s_%s_%s_%s_%d-%d', ...
+                           region, group, model, modelid, esm, forcingid, ...
+                           exp, configid, fl_y0, fl_y1);
+
+    weight_base = af2 .* (str2double(res) * 1000.0)^2;
+
+    for ireg = 1:length(regionNames)
+        regionName_raw = regionNames{ireg};
+        region_mask    = regions.(regionName_raw);
+        if strcmp(regionName_raw, 'mm')
+            regionName = lower(region);
+        else
+            regionName = regionName_raw;
+        end
+
+        W = region_mask .* weight_base;
+        % einsum 'nyx,yx->n' equivalent: sum over spatial dims
+        nt_fl_exp = size(fl_exp, 3);
+        exp_integral = zeros(nt_fl_exp, 1);
+        for n = 1:nt_fl_exp
+            exp_integral(n) = sum(fl_exp(:,:,n) .* W, 'all');
+        end
+
+        if ~isempty(fl_hist) && hist_n_out > 0
+            n_fl_out = size(fl_hist, 3) - fl_hist_start;
+            hist_integral = zeros(n_fl_out, 1);
+            for n = 1:n_fl_out
+                hist_integral(n) = sum(fl_hist(:,:, fl_hist_start + n) .* W, 'all');
+            end
+            fl_integral = [hist_integral; exp_integral];
+        else
+            fl_integral = exp_integral;
+        end
+
+        if ~exist(ncpath, 'dir'), mkdir(ncpath); end
+        scfile = fullfile(ncpath, [tendvarname '_' regionName '_' fl_file_stem '.nc']);
+        if exist(scfile, 'file'), delete(scfile); end
+        nccreate(scfile, 'time',        'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'double');
+        nccreate(scfile, tendvarname,   'Dimensions', {'time', Inf}, 'Datatype', 'double');
+        ncwrite(scfile,  'time',        fl_time_out_fl(:));
+        ncwrite(scfile,  tendvarname,   fl_integral(:));
+        ncwriteatt(scfile, '/',           'description', file_description);
+        ncwriteatt(scfile, 'time',        'units',        fl_time_units);
+        ncwriteatt(scfile, 'time',        'long_name',    fl_time_long_name);
+        ncwriteatt(scfile, 'time',        'calendar',     fl_time_calendar);
+        ncwriteatt(scfile, tendvarname,   'long_name',    long_name);
+        ncwriteatt(scfile, tendvarname,   'units',        units);
+        fprintf('Created file %s\n', scfile);
+    end
+end % FL variable loop
+
+if ~isempty(skipped_fl)
+    fprintf('\nSkipped FL scalars (input files not found):\n');
+    for k = 1:length(skipped_fl)
+        fprintf('  %s\n', skipped_fl{k});
+    end
+end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -617,14 +842,6 @@ end
 
 
 % ---- Helper: find time index matching a calendar year ----
-
-function idx = find_year_idx(ncfile, varname, target_year)
-% Return the last index whose calendar year equals target_year; error if not found.
-    [idx, found] = find_year_idx_safe(ncfile, varname, target_year);
-    if ~found
-        error('Year %d not found in %s:%s', target_year, ncfile, varname);
-    end
-end
 
 function [idx, found] = find_year_idx_safe(ncfile, varname, target_year)
 % Return the last index whose calendar year equals target_year.

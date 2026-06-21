@@ -485,8 +485,8 @@ for gic_mask, gic_suffix in [(iaf2GIC, '-gic'), (np.ones_like(iaf2GIC), '')]:
             ds = nc.Dataset(scfile, 'w', format='NETCDF4')
             ds.createDimension('time', None)
             ds.description = file_description
-            var_time = ds.createVariable('time',   'float', ('time',), zlib=True)
-            var_slc  = ds.createVariable(varname,  'float', ('time',), zlib=True)
+            var_time = ds.createVariable('time',   'f8', ('time',), zlib=True)
+            var_slc  = ds.createVariable(varname,  'f8', ('time',), zlib=True)
             var_time.units     = time_units
             var_time.long_name = time_long_name
             var_time.calendar  = time_calendar
@@ -516,6 +516,10 @@ for gic_mask, gic_suffix in [(iaf2GIC, '-gic'), (np.ones_like(iaf2GIC), '')]:
         header = meta_keys + [f"y{y}" for y in csv_years]
 
         os.makedirs(csvpath, exist_ok=True)
+        out_of_range = [y for y in nominal_yrs if y not in csv_years]
+        if out_of_range:
+            print(f"Warning: {len(out_of_range)} year(s) outside CSV window {csv_years[0]}–{csv_years[-1]+1} "
+                  f"will be dropped: {out_of_range[:5]}{'...' if len(out_of_range)>5 else ''}")
         for varname, sl_array in [("slvaf", sl_VAF), ("slg20", sl_G20), ("sla20", sl_A20)]:
             year_to_slc = dict(zip(nominal_yrs, sl_array))
             row = [meta[k] for k in meta_keys] + [
@@ -618,7 +622,11 @@ for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
     # Build concatenated FL time axis (same histout logic as ST)
     n_fl_hist = len(fl_time_hist) if fl_time_hist is not None else 0
     if fl_hist is not None and hist_n_out > 0:
-        fl_hist_start = 0 if histout == -1 else max(0, n_fl_hist - hist_n_out)
+        fl_n_out = n_fl_hist if histout == -1 else min(hist_n_out, n_fl_hist)
+        if fl_n_out < hist_n_out and histout != -1:
+            print(f"Warning: FL hist file for {tendvarname} has {n_fl_hist} steps; "
+                  f"requested {hist_n_out} via --histout — using {fl_n_out}")
+        fl_hist_start = n_fl_hist - fl_n_out
         fl_time_out = np.concatenate([fl_time_hist[fl_hist_start:], fl_time_exp])
     else:
         fl_hist_start = n_fl_hist
