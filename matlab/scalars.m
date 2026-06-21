@@ -7,9 +7,10 @@ addpath('/nird/services/software/betzy/sw_rl9/software/MATLAB/2024a/toolbox/matl
 if ~exist('region',        'var'), region        = 'AIS';       end
 if ~exist('hist',          'var'), hist          = 'historical'; end
 if ~exist('refyear',       'var'), refyear       = [];           end  % [] = last timestep of hist
-if ~exist('res',           'var'), res           = '08';         end
 if ~exist('outpath',       'var'), outpath       = '../Output';  end
-if ~exist('histout',       'var'), histout       = 1;            end
+if ~exist('histout',       'var'), histout       = -1;           end  % -1 = all hist timesteps
+if ~exist('flg_mm',        'var'), flg_mm        = true;         end  % whole ice sheet integral
+if ~exist('flg_bm',        'var'), flg_bm        = false;        end  % IMBIE3 basins
 
 % Region-specific defaults
 switch region
@@ -18,9 +19,9 @@ switch region
         def_modelid   = 'm001';  def_esm   = 'CESM2-WACCM';
         def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
     case 'GrIS'
-        def_group     = 'NORCE'; def_model = 'CISM08-MAR312-p50'; def_exp = 'historical';
-        def_modelid   = 'm001';  def_esm   = 'NorESM2-MM';
-        def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
+        def_group     = 'NORCE'; def_model = 'CISM16x-MAR312-p50'; def_exp = 'ssp585';
+        def_modelid   = 'm001';  def_esm   = 'CESM2-WACCM';
+        def_forcingid = 'f001';  def_configid = 'E001';            def_exp_group = 'ESM';
     otherwise
         error('Unknown region: %s. Choose AIS or GrIS.', region);
 end
@@ -36,10 +37,6 @@ if ~exist('hist_exp_group','var') || isempty(hist_exp_group),hist_exp_group = ex
 if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
 if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
 
-% What output to produce
-flg_mm = true;  % Integrals on model mask
-flg_bm = false;  % IMBIE3 basins
-
 % Description for netcdf global attribute
 file_description = 'ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no';
 
@@ -54,6 +51,14 @@ verbose = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % File names
+
+% Auto-detect resolution from model grid x-spacing
+exppath_tmp = fullfile(modelpath, group, model, exp_group);
+lithk_tmp   = find_model_file(exppath_tmp, 'lithk', region, group, model, modelid, esm, forcingid, exp, configid);
+x_tmp       = double(ncread(lithk_tmp, 'x'));
+dx_km       = round(abs(x_tmp(2) - x_tmp(1)) / 1000);
+res         = sprintf('%02d', dx_km);
+fprintf('Auto-detected resolution: %s km\n', res);
 
 switch region
     case 'AIS'

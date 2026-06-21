@@ -22,9 +22,10 @@ By default, `Data/` and `Models/` are expected at the repository root. Any locat
 
 ```
 ismip7-scalar-processing/                        # repository root
-├── slc/                                         # shared SLC computation package
-├── python/scalars.py                            # AIS + GrIS (--region flag)
-├── matlab/scalars.m                             # AIS + GrIS (region variable)
+├── python/
+│   ├── scalars.py                               # AIS + GrIS (--region flag)
+│   └── slc/                                     # shared SLC computation package
+├── matlab/scalars.m                             # AIS + GrIS (region variable, mirrors python/)
 ├── tools/                                       # shared helper scripts
 │   ├── set_params.sh                            # generate params.nc for a model
 │   └── params_template.nc                       # template for model-specific densities
@@ -37,10 +38,14 @@ ismip7-scalar-processing/                        # repository root
 │   ├── AIS/{group}/{model}/{exp_group}/
 │   ├── GrIS/{group}/{model}/{exp_group}/
 │   └── MINI/ISMIP7/{MINI0,MINI1}/{exp}/
+├── Output/
+│   ├── nc/                                      # NetCDF output (gitignored)
+│   └── csv/                                     # CSV output (gitignored)
 └── manual-tests/
     ├── compare_outputs.py                       # Python vs MATLAB comparison (--region filter)
     ├── test_histout.py                          # integration test for --histout
     ├── test_refyear.py                          # integration test for --refyear
+    ├── test_basins.py                           # static check: sum-of-basins == whole-sheet area
     └── MINI/                                   # lightweight MINI test suite
         ├── scalars_MINI.py
         ├── run_MINI.py
@@ -63,7 +68,7 @@ Model output files follow the new 10-field ISMIP7 naming convention:
 {var}_{region}_{group}_{model}_{modelid}_{ESM}_{forcingid}_{experiment}_{configid}_{startyear}-{endyear}.nc
 ```
 
-Example: `lithk_GrIS_NORCE_CISM08-MAR312-p50_m001_NorESM2-MM_f001_historical_E001_1960-2014.nc`
+Example: `lithk_GrIS_NORCE_CISM16x-MAR312-p50_m001_CESM2-WACCM_f001_ssp585_E001_2015-2300.nc`
 
 | Field | Meaning | Example |
 |-------|---------|---------|
@@ -83,30 +88,32 @@ Files are stored under `Models/{region}/{group}/{model}/{exp_group}/` where `{ex
 
 ## Running the scripts
 
-All scripts accept CLI arguments; the default settings match the NORCE/CISM08-MAR312-p50 (GrIS) and VUW/PISM1 (AIS) reference configurations.
+All scripts accept CLI arguments; the default settings match the NORCE/CISM16x-MAR312-p50/ssp585 (GrIS) and VUW/PISM1/ssp585 (AIS) reference configurations. Resolution is auto-detected from the model grid — no `--res` flag needed.
 
 ### Python (primary)
 
 ```bash
-cd python
-conda run -n nc python3 scalars.py --region AIS
-conda run -n nc python3 scalars.py --region GrIS
-conda run -n nc python3 scalars.py --region GrIS --group NORCE --model CISM08-MAR312-p50 \
-  --modelid m001 --esm NorESM2-MM --forcingid f001 --experiment historical --configid E001 \
+# Run from repo root
+conda run -n nc python3 python/scalars.py --region AIS
+conda run -n nc python3 python/scalars.py --region GrIS
+conda run -n nc python3 python/scalars.py --region AIS --basins          # add per-basin output
+conda run -n nc python3 python/scalars.py --region AIS --basins --no-mm  # basins only, skip whole-sheet
+conda run -n nc python3 python/scalars.py --region GrIS --group NORCE --model CISM16x-MAR312-p50 \
+  --modelid m001 --esm CESM2-WACCM --forcingid f001 --experiment ssp585 --configid E001 \
   --exp-group ESM
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
 
-Output is written to `./output/` (NetCDF) and `./csv/` (CSV) relative to the script directory. Six files are produced per ice-sheet mask region (three NetCDF + three CSV, one per SLC method):
+Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from. Six files are produced per mask region (three NetCDF + three CSV, one per SLC method):
 
 ```
-output/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
-output/slg20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
-output/sla20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
-csv/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
-csv/slg20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
-csv/sla20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
+Output/nc/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
+Output/nc/slg20_{...}.nc
+Output/nc/sla20_{...}.nc
+Output/csv/slvaf_{...}.csv
+Output/csv/slg20_{...}.csv
+Output/csv/sla20_{...}.csv
 ```
 
 where `{mask}` is `mm` (whole ice sheet) or a basin name, and `{y0}-{y1}` is the nominal simulation year range covered by the output (historical reference year through end of projection). Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period).
@@ -119,7 +126,7 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
-Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
+Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `outpath`). Resolution is auto-detected — no `res` override needed.
 
 ### Model density parameters
 
@@ -156,7 +163,7 @@ MINI differs from the full AIS/GrIS scripts in three ways: the first time step s
 
 ## SLC methods
 
-The `slc/` package implements three sea-level contribution methods:
+The `python/slc/` package implements three sea-level contribution methods:
 
 | Method | Description |
 |--------|-------------|
@@ -183,14 +190,20 @@ conda run -n nc python3 test_mini.py
 cd manual-tests
 conda run -n nc python3 test_histout.py --datapath ../Data/AIS --modelpath ../Models/AIS
 conda run -n nc python3 test_refyear.py --datapath ../Data/AIS --modelpath ../Models/AIS
+conda run -n nc python3 test_basins.py \
+    --datapath-ais ../Data/AIS --datapath-gris ../Data/GrIS
 ```
 
-**Python vs MATLAB comparison** — after running both implementations for the same submission:
+`test_basins.py` is a fast static check (no model output needed): it loads the basin mask files and verifies that the sum of basin area weights equals the whole-sheet total. Accepts `--region AIS|GrIS` to test a single region.
+
+**Python vs MATLAB comparison** — run each implementation into a separate output tree, then compare:
 
 ```bash
+conda run -n nc python3 python/scalars.py --region AIS --outpath Output-py
+# (MATLAB): outpath='../Output-mat'; run('scalars.m')
 cd manual-tests
-conda run -n nc python3 compare_outputs.py --region AIS
-conda run -n nc python3 compare_outputs.py --region GrIS
+conda run -n nc python3 compare_outputs.py --region AIS \
+    --py-outpath ../Output-py/nc --mat-outpath ../Output-mat/nc
 ```
 
 The comparison script matches files by their full ISMIP7 stem and checks all three SLC methods. Expected tolerance: < 1 × 10⁻¹⁰ m.

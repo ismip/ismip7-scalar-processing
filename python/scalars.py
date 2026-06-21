@@ -37,8 +37,8 @@ DEFAULTS = {
     "AIS":  {"group": "VUW",   "model": "PISM1",             "experiment": "ssp585",
              "modelid": "m001", "esm": "CESM2", "forcingid": "f001", "configid": "E001",
              "exp_group": "ESM"},
-    "GrIS": {"group": "NORCE", "model": "CISM08-MAR312-p50", "experiment": "historical",
-             "modelid": "m001", "esm": "NorESM2-MM",   "forcingid": "f001", "configid": "E001",
+    "GrIS": {"group": "NORCE", "model": "CISM16x-MAR312-p50", "experiment": "ssp585",
+             "modelid": "m001", "esm": "CESM2-WACCM",  "forcingid": "f001", "configid": "E001",
              "exp_group": "ESM"},
 }
 
@@ -57,12 +57,17 @@ parser.add_argument("--exp-group",      default=None,                   help="Ex
 parser.add_argument("--hist",           default="historical",           help="Historical experiment name")
 parser.add_argument("--hist-exp-group", default=None,                   help="History experiment directory (default: same as --exp-group)")
 parser.add_argument("--refyear",        type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
-parser.add_argument("--res",            default="08",                   help="Resolution for data files (e.g. 08 for 8 km)")
 parser.add_argument("--datapath",       default=None,                   help="Path to generic data files (default: ../Data/<region>)")
 parser.add_argument("--modelpath",      default=None,                   help="Path to model output (default: ../Models/<region>)")
-parser.add_argument("--outpath",        default="../Output",            help="Root path for output (nc/ and csv/ created as subdirectories)")
-parser.add_argument("--histout",        type=int, default=1,
-                                                    help="Hist timesteps to prepend to output: 0=none, 1=last only (default), -1=all, N=last N")
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_default_outpath = os.path.join(_script_dir, "..", "Output")
+parser.add_argument("--outpath",        default=_default_outpath,       help="Root path for output (nc/ and csv/ created as subdirectories)")
+parser.add_argument("--histout",        type=int, default=-1,
+                                                    help="Hist timesteps to prepend to output: 0=none, 1=last only, -1=all (default), N=last N")
+parser.add_argument("--basins",         action="store_true",
+                                                    help="Compute per-basin and per-region integrals in addition to whole ice sheet")
+parser.add_argument("--no-mm",          action="store_true",
+                                                    help="Skip whole-ice-sheet (mm) integral (use with --basins to get basins only)")
 args = parser.parse_args()
 
 region    = args.region
@@ -76,9 +81,9 @@ configid  = args.configid   or DEFAULTS[region]["configid"]
 exp_group = args.exp_group  or DEFAULTS[region]["exp_group"]
 hist      = args.hist
 hist_exp_group = args.hist_exp_group or exp_group
-res       = args.res
-datapath  = args.datapath  if args.datapath  else "../Data/" + region
-modelpath = args.modelpath if args.modelpath else "../Models/" + region
+datapath  = args.datapath  if args.datapath  else os.path.join(_script_dir, "..", "Data",   region)
+modelpath = args.modelpath if args.modelpath else os.path.join(_script_dir, "..", "Models", region)
+
 outpath   = args.outpath
 ncpath    = os.path.join(outpath, "nc")
 csvpath   = os.path.join(outpath, "csv")
@@ -94,9 +99,22 @@ def find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid,
     if len(files) > 1:
         raise ValueError(f"Multiple files match for {var} — cannot disambiguate:\n  " + "\n  ".join(files))
     return files[0]
+
+def detect_res(modelpath, region, group, model, modelid, esm, forcingid, exp, configid, exp_group):
+    """Derive data-file resolution string (e.g. '08') from model grid x-spacing."""
+    exppath = os.path.join(modelpath, group, model, exp_group)
+    f = find_model_file(exppath, "lithk", region, group, model, modelid, esm, forcingid, exp, configid)
+    ds = nc.Dataset(f, 'r')
+    dx_m = abs(float(ds.variables["x"][1]) - float(ds.variables["x"][0]))
+    ds.close()
+    return f"{round(dx_m / 1000):02d}"
+
+res = detect_res(modelpath, region, group, model, modelid, esm, forcingid, exp, configid, exp_group)
+print(f"Auto-detected resolution: {res} km")
+
 ## What output to produce
-flg_mm = True  # Integrals on model mask
-flg_bm = False  # IMBIE3 basins
+flg_mm = not args.no_mm  # Integrals on model mask
+flg_bm = args.basins     # IMBIE3 basins
 
 # Description for netcdf global
 file_description = "ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no"
