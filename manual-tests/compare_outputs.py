@@ -5,13 +5,21 @@ Run from manual-tests/ after both versions have produced output.
 Output files follow the naming: {varname}_{regionmask}_{stem}.nc
 where varname is slvaf, slg20, or sla20, and stem contains the full ISMIP7 fields.
 
-Python output: ../python/output/{varname}_*.nc
-MATLAB output: ../matlab/output/{varname}_*.nc
+Both Python and MATLAB default to ../Output as their output root, writing nc files
+to ../Output/nc/ and csv files to ../Output/csv/.  Since they share the same tree,
+run each into a separate tree for comparison:
+
+    cd python && python scalars.py --region AIS --outpath ../Output-py
+    (MATLAB): outpath='../Output-mat'; run('scalars.m')
+    cd manual-tests && python compare_outputs.py \
+        --py-outpath ../Output-py/nc --mat-outpath ../Output-mat/nc
 
 Usage:
-    python compare_outputs.py               # compare all output files
-    python compare_outputs.py --region AIS  # compare only AIS files
-    python compare_outputs.py --region GrIS # compare only GrIS files
+    python compare_outputs.py                           # both default to ../Output/nc
+    python compare_outputs.py --region AIS              # compare only AIS files
+    python compare_outputs.py --region GrIS             # compare only GrIS files
+    python compare_outputs.py --py-outpath  ../Output-py/nc \
+                              --mat-outpath ../Output-mat/nc
 """
 
 import sys
@@ -24,12 +32,16 @@ import netCDF4 as nc
 parser = argparse.ArgumentParser(description="Compare MATLAB and Python scalar outputs")
 parser.add_argument("--region", choices=["AIS", "GrIS"], default=None,
                     help="Filter by ice-sheet region (default: compare all files)")
+parser.add_argument("--py-outpath",  default="../Output/nc",
+                    help="Directory containing Python nc output (default: ../Output/nc)")
+parser.add_argument("--mat-outpath", default="../Output/nc",
+                    help="Directory containing MATLAB nc output (default: ../Output/nc)")
 args = parser.parse_args()
 
 VARS    = ['slvaf', 'slg20', 'sla20']
 TOL     = 1e-10  # absolute tolerance in metres
-py_dir  = '../python/output'
-mat_dir = '../matlab/output'
+py_dir  = args.py_outpath
+mat_dir = args.mat_outpath
 
 # Find Python output files for one varname, optionally filtered by region
 py_files = sorted(glob.glob(os.path.join(py_dir, 'slvaf_*.nc')))

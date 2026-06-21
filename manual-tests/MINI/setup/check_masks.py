@@ -6,7 +6,7 @@
 import sys
 import os
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(SCRIPT_DIR, '../../..'))
+sys.path.insert(0, os.path.join(SCRIPT_DIR, '../../../python'))
 
 import argparse
 import numpy as np

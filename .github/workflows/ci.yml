@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v1
+        with:
+          environment-name: nc
+          create-args: >-
+            python=3.11
+            netCDF4
+            numpy
+            scipy
+            pytest
+
+      - name: Run unit tests
+        run: pytest tests/ -v

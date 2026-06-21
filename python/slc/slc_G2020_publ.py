@@ -1,3 +1,8 @@
+# Canonical published-formula reference for G2020 — kept intentionally for cross-checking.
+# This file is NOT imported by any production script; use slc_G2020.py instead.
+# slc_G2020.py reformulates B in an absolute reference frame (zn absorbed into B),
+# which is numerically equivalent when S=0.
+#
 # Calculate sea-level contribution according to G2020
 # https://doi.org/10.5194/tc-14-833-2020
 # Symbols are the same as in the paper.
@@ -72,8 +77,10 @@ def get_slc_G2020(H0,H,b0,b,zn0,zn,A,c):
 
 # grounded ice volume change 
 def get_vgr_G2020(H,b,sl,A,c):
-  # eq. 4 in https://doi.org/10.5194/tc-14-833-2020  
-    mask_gr = H > (b-sl)*c.RHOSW/c.RHOI 
+  # eq. 4 in https://doi.org/10.5194/tc-14-833-2020
+  # NOTE: (b-sl) here is the published formula; verify sign convention against paper
+  # before use. The active slc_G2020.py uses (-B) with S=0 assumed.
+    mask_gr = H > (b-sl)*c.RHOSW/c.RHOI
     vol = np.sum((H*A)[ mask_gr ])
     return vol
 

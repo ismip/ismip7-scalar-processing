@@ -9,7 +9,7 @@ Two implementations are provided: **Python** (primary) and **MATLAB**. Conversio
 ```bash
 conda create -n nc
 conda activate nc
-conda install -c conda-forge cdo=2.4.4 nco netCDF4 scipy
+conda install -c conda-forge cdo=2.4.4 nco netCDF4 scipy pytest
 ```
 
 ## Input data
@@ -22,9 +22,10 @@ By default, `Data/` and `Models/` are expected at the repository root. Any locat
 
 ```
 ismip7-scalar-processing/                        # repository root
-├── slc/                                         # shared SLC computation package
-├── python/scalars.py                            # AIS + GrIS (--region flag)
-├── matlab/scalars.m                             # AIS + GrIS (region variable)
+├── python/
+│   ├── scalars.py                               # AIS + GrIS (--region flag)
+│   └── slc/                                     # shared SLC computation package
+├── matlab/scalars.m                             # AIS + GrIS (region variable, mirrors python/)
 ├── tools/                                       # shared helper scripts
 │   ├── set_params.sh                            # generate params.nc for a model
 │   └── params_template.nc                       # template for model-specific densities
@@ -37,10 +38,20 @@ ismip7-scalar-processing/                        # repository root
 │   ├── AIS/{group}/{model}/{exp_group}/
 │   ├── GrIS/{group}/{model}/{exp_group}/
 │   └── MINI/ISMIP7/{MINI0,MINI1}/{exp}/
+├── Output/
+│   ├── nc/                                      # NetCDF output (gitignored)
+│   └── csv/                                     # CSV output (gitignored)
+├── tests/
+│   ├── test_slc_units.py                        # pytest: slc/ physics unit tests (no ext data)
+│   └── test_mini_smoke.py                       # pytest: MINI end-to-end smoke tests
+├── test-data/                                   # committed MINI inputs for self-contained CI
+│   ├── Data/{MINI0,MINI1}/
+│   └── Models/MINI/ISMIP7/{MINI0,MINI1}/{exp}/
 └── manual-tests/
     ├── compare_outputs.py                       # Python vs MATLAB comparison (--region filter)
     ├── test_histout.py                          # integration test for --histout
     ├── test_refyear.py                          # integration test for --refyear
+    ├── test_basins.py                           # static check: sum-of-basins == whole-sheet area
     └── MINI/                                   # lightweight MINI test suite
         ├── scalars_MINI.py
         ├── run_MINI.py
@@ -63,12 +74,12 @@ Model output files follow the new 10-field ISMIP7 naming convention:
 {var}_{region}_{group}_{model}_{modelid}_{ESM}_{forcingid}_{experiment}_{configid}_{startyear}-{endyear}.nc
 ```
 
-Example: `lithk_GrIS_NORCE_CISM08-MAR312-p50_m001_NorESM2-MM_f001_historical_E001_1960-2014.nc`
+Example: `lithk_GrIS_NORCE_CISM16x-MAR312-p50_m001_CESM2-WACCM_f001_ssp585_E001_2015-2300.nc`
 
 | Field | Meaning | Example |
 |-------|---------|---------|
 | `{group}` | Submitting institution | `NORCE` |
-| `{model}` | Ice sheet model | `CISM08-MAR312-p50` |
+| `{model}` | Ice sheet model | `CISM16x-MAR312-p50` |
 | `{modelid}` | ISM member ID (`mNNN`) | `m001` |
 | `{ESM}` | Climate forcing model (CMIP6/7) | `NorESM2-MM` |
 | `{forcingid}` | Forcing realization (`fNNN`) | `f001` |
@@ -83,33 +94,51 @@ Files are stored under `Models/{region}/{group}/{model}/{exp_group}/` where `{ex
 
 ## Running the scripts
 
-All scripts accept CLI arguments; the default settings match the NORCE/CISM08-MAR312-p50 (GrIS) and VUW/PISM1 (AIS) reference configurations.
+All scripts accept CLI arguments; the default settings match the NORCE/CISM16x-MAR312-p50/ssp585 (GrIS) and VUW/PISM1/ssp585 (AIS) reference configurations. Resolution is auto-detected from the model grid — no `--res` flag needed.
 
 ### Python (primary)
 
 ```bash
-cd python
-conda run -n nc python3 scalars.py --region AIS
-conda run -n nc python3 scalars.py --region GrIS
-conda run -n nc python3 scalars.py --region GrIS --group NORCE --model CISM08-MAR312-p50 \
-  --modelid m001 --esm NorESM2-MM --forcingid f001 --experiment historical --configid E001 \
+# Run from repo root
+conda run -n nc python3 python/scalars.py --region AIS
+conda run -n nc python3 python/scalars.py --region GrIS
+conda run -n nc python3 python/scalars.py --region AIS --basins          # add per-basin output
+conda run -n nc python3 python/scalars.py --region AIS --basins --no-mm  # basins only, skip whole-sheet
+conda run -n nc python3 python/scalars.py --region GrIS --group NORCE --model CISM16x-MAR312-p50 \
+  --modelid m001 --esm CESM2-WACCM --forcingid f001 --experiment ssp585 --configid E001 \
   --exp-group ESM
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout`, `--res`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
 
-Output is written to `./output/` (NetCDF) and `./csv/` (CSV) relative to the script directory. Six files are produced per ice-sheet mask region (three NetCDF + three CSV, one per SLC method):
+Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from.
+
+**SLC output** — six files per mask region (three NetCDF + three CSV, one per SLC method), always in two variants: with and without GIC masking:
 
 ```
-output/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
-output/slg20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
-output/sla20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
-csv/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
-csv/slg20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
-csv/sla20_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.csv
+Output/nc/slvaf_{mask}-gic_{...}.nc    # with GIC masking
+Output/nc/slvaf_{mask}_{...}.nc        # without GIC masking
+Output/nc/slg20_{mask}-gic_{...}.nc
+Output/nc/slg20_{mask}_{...}.nc
+Output/nc/sla20_{mask}-gic_{...}.nc
+Output/nc/sla20_{mask}_{...}.nc
+Output/csv/slvaf_{mask}-gic_{...}.csv
+...
 ```
 
-where `{mask}` is `mm` (whole ice sheet) or a basin name, and `{y0}-{y1}` is the nominal simulation year range covered by the output (historical reference year through end of projection). Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period).
+where `{mask}` is `ais`/`gris` (whole ice sheet) or a basin name (`wais`, `ce`, `no`, `r01`, …), and `{y0}-{y1}` is the nominal simulation year range. The `-gic` suffix means glaciers and ice caps (GIC) are excluded from the integral. Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period). The `region` column in the CSV matches the `{mask}` field in the filename.
+
+**Other scalar output** — one NetCDF per variable per mask region, no GIC masking, plain region name:
+
+```
+Output/nc/lim_{mask}_{...}.nc
+Output/nc/limnsw_{mask}_{...}.nc
+Output/nc/iareagr_{mask}_{...}.nc
+Output/nc/iareafl_{mask}_{...}.nc
+Output/nc/tendacabf_{mask}_{...}.nc
+Output/nc/tendlibmassbfgr_{mask}_{...}.nc
+...
+```
 
 ### MATLAB
 
@@ -119,14 +148,18 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
-Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `res`, `datapath`, `modelpath`, `outpath`).
+Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `outpath`). Resolution is auto-detected — no `res` override needed.
 
 ### Model density parameters
 
 Each model directory must contain a `params.nc` file with ice (`rhoi`), ocean (`rhow`), and freshwater (`rhof`) densities. Use `tools/set_params.sh` to generate one from `tools/params_template.nc`:
 
 ```bash
-bash tools/set_params.sh
+bash tools/set_params.sh <region> <group> <model> [rhoi] [rhow] [rhof]
+
+# Examples:
+bash tools/set_params.sh GrIS NORCE CISM16x-MAR312-p50
+bash tools/set_params.sh AIS  VUW   PISM1 910 1028 1000
 ```
 
 ## MINI test suite
@@ -156,7 +189,7 @@ MINI differs from the full AIS/GrIS scripts in three ways: the first time step s
 
 ## SLC methods
 
-The `slc/` package implements three sea-level contribution methods:
+The `python/slc/` package implements three sea-level contribution methods:
 
 | Method | Description |
 |--------|-------------|
@@ -170,27 +203,47 @@ Ocean area normalization uses `oarea = 3.625 × 10¹⁴ m²` (Gregory et al. 201
 
 ## Testing
 
-**Smoke test** — lightweight MINI suite, no external data required:
+### Automatic tests (no external data needed)
+
+The `tests/` directory contains a `pytest` suite that runs on every push via CI.
+It requires only `pytest` in addition to the standard conda environment:
 
 ```bash
-cd manual-tests
-conda run -n nc python3 test_mini.py
+conda run -n nc pytest tests/ -v
 ```
 
-**Integration tests** — require model output under `Data/` and `Models/` (defaults use the VUW/PISM1 AIS reference run):
+This runs:
+- **`test_slc_units.py`** — unit tests for the `slc/` physics (VAF, G2020, A2020):
+  analytic cases with synthetic arrays (identical states → zero SLC, mass loss →
+  positive SLC, volume decomposition identity `Vtot = Vgr + Vfl`, etc.).
+- **`test_mini_smoke.py`** — integration smoke test for all four MINI combinations
+  (MINI0/MINI1 × exp0/expg), using input files committed to `test-data/`.
+
+### Manual integration tests
+
+These require model output under `Data/` and `Models/` (defaults use the VUW/PISM1
+AIS reference run):
 
 ```bash
 cd manual-tests
 conda run -n nc python3 test_histout.py --datapath ../Data/AIS --modelpath ../Models/AIS
 conda run -n nc python3 test_refyear.py --datapath ../Data/AIS --modelpath ../Models/AIS
+conda run -n nc python3 test_basins.py \
+    --datapath-ais ../Data/AIS --datapath-gris ../Data/GrIS
 ```
 
-**Python vs MATLAB comparison** — after running both implementations for the same submission:
+`test_basins.py` is a fast static check (no model output needed): it loads the basin mask files and verifies that the sum of basin area weights equals the whole-sheet total. Accepts `--region AIS|GrIS` to test a single region.
+
+### Python vs MATLAB comparison
+
+Run each implementation into a separate output tree, then compare:
 
 ```bash
+conda run -n nc python3 python/scalars.py --region AIS --outpath Output-py
+# (MATLAB): outpath='../Output-mat'; run('scalars.m')
 cd manual-tests
-conda run -n nc python3 compare_outputs.py --region AIS
-conda run -n nc python3 compare_outputs.py --region GrIS
+conda run -n nc python3 compare_outputs.py --region AIS \
+    --py-outpath ../Output-py/nc --mat-outpath ../Output-mat/nc
 ```
 
 The comparison script matches files by their full ISMIP7 stem and checks all three SLC methods. Expected tolerance: < 1 × 10⁻¹⁰ m.
@@ -203,5 +256,5 @@ Converted files can be validated with the [ISM_SimulationChecker](https://github
 
 ```bash
 cd ISM_SimulationChecker
-python compliance_checker.py --source-path ../ismip7-scalar-processing/Models/GrIS/NORCE/CISM08-MAR312-p50/ESM --variable-list ismip7_xyt
+python compliance_checker.py --source-path ../ismip7-scalar-processing/Models/GrIS/NORCE/CISM16x-MAR312-p50/ESM --variable-list ismip7_xyt
 ```
