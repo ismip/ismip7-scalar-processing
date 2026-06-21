@@ -105,18 +105,34 @@ conda run -n nc python3 python/scalars.py --region GrIS --group NORCE --model CI
 
 Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
 
-Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from. Six files are produced per mask region (three NetCDF + three CSV, one per SLC method):
+Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from.
+
+**SLC output** — six files per mask region (three NetCDF + three CSV, one per SLC method), always in two variants: with and without GIC masking:
 
 ```
-Output/nc/slvaf_{mask}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}.nc
-Output/nc/slg20_{...}.nc
-Output/nc/sla20_{...}.nc
-Output/csv/slvaf_{...}.csv
-Output/csv/slg20_{...}.csv
-Output/csv/sla20_{...}.csv
+Output/nc/slvaf_{mask}-gic_{...}.nc    # with GIC masking
+Output/nc/slvaf_{mask}_{...}.nc        # without GIC masking
+Output/nc/slg20_{mask}-gic_{...}.nc
+Output/nc/slg20_{mask}_{...}.nc
+Output/nc/sla20_{mask}-gic_{...}.nc
+Output/nc/sla20_{mask}_{...}.nc
+Output/csv/slvaf_{mask}-gic_{...}.csv
+...
 ```
 
-where `{mask}` is `mm` (whole ice sheet) or a basin name, and `{y0}-{y1}` is the nominal simulation year range covered by the output (historical reference year through end of projection). Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period).
+where `{mask}` is `ais`/`gris` (whole ice sheet) or a basin name (`wais`, `ce`, `no`, `r01`, …), and `{y0}-{y1}` is the nominal simulation year range. The `-gic` suffix means glaciers and ice caps (GIC) are excluded from the integral. Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period). The `region` column in the CSV matches the `{mask}` field in the filename.
+
+**Other scalar output** — one NetCDF per variable per mask region, no GIC masking, plain region name:
+
+```
+Output/nc/lim_{mask}_{...}.nc
+Output/nc/limnsw_{mask}_{...}.nc
+Output/nc/iareagr_{mask}_{...}.nc
+Output/nc/iareafl_{mask}_{...}.nc
+Output/nc/tendacabf_{mask}_{...}.nc
+Output/nc/tendlibmassbfgr_{mask}_{...}.nc
+...
+```
 
 ### MATLAB
 

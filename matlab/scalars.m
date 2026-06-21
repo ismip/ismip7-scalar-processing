@@ -41,8 +41,6 @@ if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['.
 file_description = 'ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no';
 
 % Options
-% Remove GIC contribution
-flg_GICmask = true; % [Default true!]
 % A2020: seamless hist+exp cumulative (true, default) vs. relative to reference (false)
 flg_A20_cumul = true;
 
@@ -141,11 +139,8 @@ end
 
 % Area factors
 af2 = double(ncread(af2input, 'af2')); % (nx, ny)
-if flg_GICmask
-    iaf2GIC = double(ncread(gicinput, 'iaf2')); % (nx, ny)
-else
-    iaf2GIC = ones(size(af2));
-end
+% GIC mask: always loaded
+iaf2GIC = double(ncread(gicinput, 'iaf2')); % (nx, ny)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare model output
@@ -241,9 +236,7 @@ if verbose
     fprintf('# Generic\n');
     fprintf('af2:       %s\n', mat2str(size(af2)));
     fprintf('maxmask1:  %s\n', mat2str(size(maxmask1)));
-    if flg_GICmask
-        fprintf('iaf2GIC:   %s\n', mat2str(size(iaf2GIC)));
-    end
+    fprintf('iaf2GIC:   %s\n', mat2str(size(iaf2GIC)));
     fprintf('# Model\n');
     fprintf('lithk_ref: %s\n', mat2str(size(lithk_ref)));
     fprintf('topg_ref:  %s\n', mat2str(size(topg_ref)));
@@ -261,216 +254,232 @@ end
 regionNames = fieldnames(regions);
 nt = size(lithk, 3);
 
-for ireg = 1:length(regionNames)
-    regionName  = regionNames{ireg};
-    region_mask = regions.(regionName);
-    fprintf('%s\n', regionName);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Pre-compute shared time axis and file stem (same for all regions)
 
-    % Reference state
-    H0 = lithk_ref .* maxmask1 .* iaf2GIC;
+if hist_n_out > 0
+    time_out = [time_hist(hist_start+1 : end); time_model(:)];
+else
+    time_out = time_model(:);
+end
+nominal_yrs = decode_years(time_out, time_units) - 1;
+year_start  = nominal_yrs(1);
+year_end    = nominal_yrs(end);
+file_stem   = sprintf('%s_%s_%s_%s_%s_%s_%s_%s_%d-%d', ...
+                      region, group, model, modelid, esm, forcingid, ...
+                      exp, configid, year_start, year_end);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% SLC integrals — two passes: with GIC masking (-gic suffix) and without
+
+gic_masks   = {iaf2GIC,             ones(size(iaf2GIC))};
+gic_suffixes = {'-gic', ''};
+
+for igic = 1:2
+    gic_mask   = gic_masks{igic};
+    gic_suffix = gic_suffixes{igic};
+
+    % Reference state for this GIC mode
+    H0 = lithk_ref .* maxmask1 .* gic_mask;
     B0 = topg_ref;
     % TODO clarify if S0=0 is correct for all models
     S0 = topg_ref * 0.0; % sea level fixed at 0
 
-    % Area weighting and basin masking
-    A = region_mask .* af2 .* (str2double(res) * 1000.0)^2;
+    for ireg = 1:length(regionNames)
+        regionName_raw = regionNames{ireg};
+        region_mask    = regions.(regionName_raw);
 
-    sl_VAF = zeros(nt, 1);
-    sl_G20 = zeros(nt, 1);
-    sl_A20 = zeros(nt, 1);
-    VAF_hist = [];
-    G20_hist = [];
-    A20_hist = [];
-
-    % ---- Hist portion (VAF, G2020, and non-cumulative A2020) ----
-    if hist_n_out > 0
-        VAF_hist = zeros(hist_n_out, 1);
-        G20_hist = zeros(hist_n_out, 1);
-        for n = 1:hist_n_out
-            H              = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* iaf2GIC;
-            B              = topg_hist_all(:,:,  hist_start + n);
-            VAF_hist(n)    = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
-            G20_hist(n)    = get_slc_G2020(H0, H, B0, B, A, c);
+        % Display name: mm → ais/gris, others unchanged
+        if strcmp(regionName_raw, 'mm')
+            dispName = lower(region);
+        else
+            dispName = regionName_raw;
         end
-        if ~flg_A20_cumul
-            A20_hist = zeros(hist_n_out, 1);
+        regionName = [dispName gic_suffix];
+        fprintf('%s\n', regionName);
+
+        % Area weighting and basin masking
+        A = region_mask .* af2 .* (str2double(res) * 1000.0)^2;
+
+        sl_VAF = zeros(nt, 1);
+        sl_G20 = zeros(nt, 1);
+        sl_A20 = zeros(nt, 1);
+        VAF_hist = [];
+        G20_hist = [];
+        A20_hist = [];
+
+        % ---- Hist portion (VAF, G2020, and non-cumulative A2020) ----
+        if hist_n_out > 0
+            VAF_hist = zeros(hist_n_out, 1);
+            G20_hist = zeros(hist_n_out, 1);
             for n = 1:hist_n_out
-                H           = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* iaf2GIC;
-                B           = topg_hist_all(:,:,  hist_start + n);
-                A20_hist(n) = get_slc_A2020(H0, H, B0, B, S0, S0, A, c);
+                H              = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* gic_mask;
+                B              = topg_hist_all(:,:,  hist_start + n);
+                VAF_hist(n)    = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
+                G20_hist(n)    = get_slc_G2020(H0, H, B0, B, A, c);
+            end
+            if ~flg_A20_cumul
+                A20_hist = zeros(hist_n_out, 1);
+                for n = 1:hist_n_out
+                    H           = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* gic_mask;
+                    B           = topg_hist_all(:,:,  hist_start + n);
+                    A20_hist(n) = get_slc_A2020(H0, H, B0, B, S0, S0, A, c);
+                end
             end
         end
-    end
 
-    % ---- VAF and G2020 (always relative to reference state) ----
-    for n = 1:nt
-        H         = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
-        B         = topg(:,:,n);
-        sl_VAF(n) = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
-        sl_G20(n) = get_slc_G2020(H0, H, B0, B, A, c);
-    end
-
-    % ---- A2020 (method-dependent) ----
-    if ~flg_A20_cumul
-        % Relative to reference state at every timestep
+        % ---- VAF and G2020 (always relative to reference state) ----
         for n = 1:nt
-            H         = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
+            H         = lithk(:,:,n) .* maxmask1 .* gic_mask;
             B         = topg(:,:,n);
-            sl_A20(n) = get_slc_A2020(H0, H, B0, B, S0, S0, A, c);
+            sl_VAF(n) = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
+            sl_G20(n) = get_slc_G2020(H0, H, B0, B, A, c);
         end
-    else
-        % Seamless hist+exp cumulative, offset to zero at t_ref
-        if strcmp(exp, hist)
-            lh   = lithk;
-            th   = topg;
-            n_lh = nt;
-        else
-            lh   = lithk_hist_all;
-            th   = topg_hist_all;
-            n_lh = n_hist;
-        end
-        % Hist pre-pass: cumulate from hist[0] forward
-        H_prev     = lh(:,:,1) .* maxmask1 .* iaf2GIC;
-        B_prev     = th(:,:,1);
-        acc        = 0.0;
-        hist_cumul = zeros(n_lh, 1);
-        for n_h = 2:n_lh
-            H_h             = lh(:,:,n_h) .* maxmask1 .* iaf2GIC;
-            B_h             = th(:,:,n_h);
-            acc             = acc + get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c);
-            hist_cumul(n_h) = acc;
-            H_prev          = H_h;
-            B_prev          = B_h;
-        end
-        offset = hist_cumul(ref_idx);
-        if strcmp(exp, hist)
-            sl_A20 = hist_cumul - offset;
-        else
-            raw_exp = zeros(nt, 1);
+
+        % ---- A2020 (method-dependent) ----
+        if ~flg_A20_cumul
+            % Relative to reference state at every timestep
             for n = 1:nt
-                H          = lithk(:,:,n) .* maxmask1 .* iaf2GIC;
-                B          = topg(:,:,n);
-                acc        = acc + get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c);
-                raw_exp(n) = acc;
-                H_prev     = H;
-                B_prev     = B;
+                H         = lithk(:,:,n) .* maxmask1 .* gic_mask;
+                B         = topg(:,:,n);
+                sl_A20(n) = get_slc_A2020(H0, H, B0, B, S0, S0, A, c);
             end
-            if ref_in_exp
-                offset = raw_exp(ref_idx_exp);
-            end
-            sl_A20 = raw_exp - offset;
-            if hist_n_out > 0
-                A20_hist = hist_cumul(hist_start+1 : end) - offset;
-            end
-        end
-    end
-
-    % Concatenate hist + exp arrays
-    sl_VAF = [VAF_hist; sl_VAF];
-    sl_G20 = [G20_hist; sl_G20];
-    sl_A20 = [A20_hist; sl_A20];
-
-    if verbose
-        disp(sl_VAF');
-        disp(sl_G20');
-        disp(sl_A20');
-    end
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Build output time axis and derive nominal year range (ST: year - 1)
-
-    if hist_n_out > 0
-        time_out = [time_hist(hist_start+1 : end); time_model(:)];
-    else
-        time_out = time_model(:);
-    end
-    nominal_yrs = decode_years(time_out, time_units) - 1;
-    year_start  = nominal_yrs(1);
-    year_end    = nominal_yrs(end);
-    file_stem   = sprintf('%s_%s_%s_%s_%s_%s_%s_%s_%d-%d', ...
-                          region, group, model, modelid, esm, forcingid, ...
-                          exp, configid, year_start, year_end);
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Write NetCDF output — one file per SLC method
-
-    nc_vars = { ...
-        'slvaf', 'Sea level contribution based on Vaf',   sl_VAF; ...
-        'slg20', 'Sea level contribution based on G2020', sl_G20; ...
-        'sla20', 'Sea level contribution based on A2020', sl_A20; ...
-    };
-    for iv = 1:size(nc_vars, 1)
-        varname   = nc_vars{iv,1};
-        long_name = nc_vars{iv,2};
-        sl_data   = nc_vars{iv,3};
-        if ~exist(ncpath, 'dir'), mkdir(ncpath); end
-        scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
-        if exist(scfile, 'file'), delete(scfile); end
-        nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4');
-        nccreate(scfile, varname,  'Dimensions', {'time', Inf});
-        ncwrite(scfile,  'time',   time_out(:));
-        ncwrite(scfile,  varname,  sl_data(:));
-        ncwriteatt(scfile, '/',      'description', file_description);
-        ncwriteatt(scfile, 'time',   'units',        time_units);
-        ncwriteatt(scfile, 'time',   'long_name',    time_long_name);
-        ncwriteatt(scfile, 'time',   'calendar',     time_calendar);
-        ncwriteatt(scfile, varname,  'long_name',    long_name);
-        ncwriteatt(scfile, varname,  'units',        'm');
-        fprintf('Created file %s\n', scfile);
-    end
-
-    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    % Write CSV output — one file per SLC method
-
-    if ~exist(csvpath, 'dir'), mkdir(csvpath); end
-    region_col = 'ALL';
-    if ~strcmp(regionName, 'mm'), region_col = regionName; end
-
-    meta_keys = {'ice_source','region','group','model','model_variant','scenario','GCM','forcingid','configid'};
-    meta_vals = {region, region_col, group, model, modelid, exp, esm, forcingid, configid};
-    csv_years = 1850:2300;
-
-    csv_vars = { ...
-        'slvaf', sl_VAF; ...
-        'slg20', sl_G20; ...
-        'sla20', sl_A20; ...
-    };
-    for iv = 1:size(csv_vars, 1)
-        varname  = csv_vars{iv,1};
-        sl_data  = csv_vars{iv,2};
-        csvfile  = fullfile(csvpath, [varname '_' regionName '_' file_stem '.csv']);
-        fid      = fopen(csvfile, 'w');
-        % Header
-        fprintf(fid, '%s', strjoin([meta_keys, arrayfun(@(y) sprintf('y%d',y), csv_years, 'UniformOutput', false)], ','));
-        fprintf(fid, '\n');
-        % Data row — metadata
-        for k = 1:length(meta_vals)
-            fprintf(fid, '%s,', meta_vals{k});
-        end
-        % Annual values
-        year_map = containers.Map(nominal_yrs, num2cell(sl_data(:)));
-        for iy = 1:length(csv_years)
-            y = csv_years(iy);
-            if isKey(year_map, y)
-                val = year_map(y);
-                if iy < length(csv_years)
-                    fprintf(fid, '%.10g,', val);
-                else
-                    fprintf(fid, '%.10g', val);
-                end
+        else
+            % Seamless hist+exp cumulative, offset to zero at t_ref
+            if strcmp(exp, hist)
+                lh   = lithk;
+                th   = topg;
+                n_lh = nt;
             else
-                if iy < length(csv_years)
-                    fprintf(fid, 'NA,');
-                else
-                    fprintf(fid, 'NA');
+                lh   = lithk_hist_all;
+                th   = topg_hist_all;
+                n_lh = n_hist;
+            end
+            % Hist pre-pass: cumulate from hist[0] forward
+            H_prev     = lh(:,:,1) .* maxmask1 .* gic_mask;
+            B_prev     = th(:,:,1);
+            acc        = 0.0;
+            hist_cumul = zeros(n_lh, 1);
+            for n_h = 2:n_lh
+                H_h             = lh(:,:,n_h) .* maxmask1 .* gic_mask;
+                B_h             = th(:,:,n_h);
+                acc             = acc + get_slc_A2020(H_prev, H_h, B_prev, B_h, S0, S0, A, c);
+                hist_cumul(n_h) = acc;
+                H_prev          = H_h;
+                B_prev          = B_h;
+            end
+            offset = hist_cumul(ref_idx);
+            if strcmp(exp, hist)
+                sl_A20 = hist_cumul - offset;
+            else
+                raw_exp = zeros(nt, 1);
+                for n = 1:nt
+                    H          = lithk(:,:,n) .* maxmask1 .* gic_mask;
+                    B          = topg(:,:,n);
+                    acc        = acc + get_slc_A2020(H_prev, H, B_prev, B, S0, S0, A, c);
+                    raw_exp(n) = acc;
+                    H_prev     = H;
+                    B_prev     = B;
+                end
+                if ref_in_exp
+                    offset = raw_exp(ref_idx_exp);
+                end
+                sl_A20 = raw_exp - offset;
+                if hist_n_out > 0
+                    A20_hist = hist_cumul(hist_start+1 : end) - offset;
                 end
             end
         end
-        fprintf(fid, '\n');
-        fclose(fid);
-        fprintf('Created file %s\n', csvfile);
-    end
-end
+
+        % Concatenate hist + exp arrays
+        sl_VAF = [VAF_hist; sl_VAF];
+        sl_G20 = [G20_hist; sl_G20];
+        sl_A20 = [A20_hist; sl_A20];
+
+        if verbose
+            disp(sl_VAF');
+            disp(sl_G20');
+            disp(sl_A20');
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Write SLC NetCDF output — one file per SLC method
+
+        nc_vars = { ...
+            'slvaf', 'Sea level contribution based on Vaf',   sl_VAF; ...
+            'slg20', 'Sea level contribution based on G2020', sl_G20; ...
+            'sla20', 'Sea level contribution based on A2020', sl_A20; ...
+        };
+        for iv = 1:size(nc_vars, 1)
+            varname   = nc_vars{iv,1};
+            long_name = nc_vars{iv,2};
+            sl_data   = nc_vars{iv,3};
+            if ~exist(ncpath, 'dir'), mkdir(ncpath); end
+            scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
+            if exist(scfile, 'file'), delete(scfile); end
+            nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4');
+            nccreate(scfile, varname,  'Dimensions', {'time', Inf});
+            ncwrite(scfile,  'time',   time_out(:));
+            ncwrite(scfile,  varname,  sl_data(:));
+            ncwriteatt(scfile, '/',      'description', file_description);
+            ncwriteatt(scfile, 'time',   'units',        time_units);
+            ncwriteatt(scfile, 'time',   'long_name',    time_long_name);
+            ncwriteatt(scfile, 'time',   'calendar',     time_calendar);
+            ncwriteatt(scfile, varname,  'long_name',    long_name);
+            ncwriteatt(scfile, varname,  'units',        'm');
+            fprintf('Created file %s\n', scfile);
+        end
+
+        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % Write SLC CSV output — one file per SLC method
+
+        if ~exist(csvpath, 'dir'), mkdir(csvpath); end
+        meta_keys = {'ice_source','region','group','model','model_variant','scenario','GCM','forcingid','configid'};
+        meta_vals = {region, regionName, group, model, modelid, exp, esm, forcingid, configid};
+        csv_years = 1850:2300;
+
+        csv_vars = { ...
+            'slvaf', sl_VAF; ...
+            'slg20', sl_G20; ...
+            'sla20', sl_A20; ...
+        };
+        for iv = 1:size(csv_vars, 1)
+            varname  = csv_vars{iv,1};
+            sl_data  = csv_vars{iv,2};
+            csvfile  = fullfile(csvpath, [varname '_' regionName '_' file_stem '.csv']);
+            fid      = fopen(csvfile, 'w');
+            % Header
+            fprintf(fid, '%s', strjoin([meta_keys, arrayfun(@(y) sprintf('y%d',y), csv_years, 'UniformOutput', false)], ','));
+            fprintf(fid, '\n');
+            % Data row — metadata
+            for k = 1:length(meta_vals)
+                fprintf(fid, '%s,', meta_vals{k});
+            end
+            % Annual values
+            year_map = containers.Map(nominal_yrs, num2cell(sl_data(:)));
+            for iy = 1:length(csv_years)
+                y = csv_years(iy);
+                if isKey(year_map, y)
+                    val = year_map(y);
+                    if iy < length(csv_years)
+                        fprintf(fid, '%.10g,', val);
+                    else
+                        fprintf(fid, '%.10g', val);
+                    end
+                else
+                    if iy < length(csv_years)
+                        fprintf(fid, 'NA,');
+                    else
+                        fprintf(fid, 'NA');
+                    end
+                end
+            end
+            fprintf(fid, '\n');
+            fclose(fid);
+            fprintf('Created file %s\n', csvfile);
+        end
+    end % region loop
+end % GIC mode loop
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
