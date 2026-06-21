@@ -8,7 +8,7 @@ if ~exist('region',        'var'), region        = 'AIS';       end
 if ~exist('hist',          'var'), hist          = 'historical'; end
 if ~exist('refyear',       'var'), refyear       = [];           end  % [] = last timestep of hist
 if ~exist('res',           'var'), res           = '08';         end
-if ~exist('outpath',       'var'), outpath       = './output';   end
+if ~exist('outpath',       'var'), outpath       = '../Output';  end
 if ~exist('histout',       'var'), histout       = 1;            end
 
 % Region-specific defaults
@@ -67,7 +67,8 @@ switch region
         basininput = [datapath '/basins_GrIS_Mouginot_extended_'      res '000m_v1.nc'];
         gicinput   = [datapath '/iaf2_GIC_GrIS_'                      res '000m_v0.nc'];
 end
-csvpath = fullfile(fileparts(outpath), 'csv');
+ncpath  = fullfile(outpath, 'nc');
+csvpath = fullfile(outpath, 'csv');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare generic data
@@ -397,7 +398,8 @@ for ireg = 1:length(regionNames)
         varname   = nc_vars{iv,1};
         long_name = nc_vars{iv,2};
         sl_data   = nc_vars{iv,3};
-        scfile = fullfile(outpath, [varname '_' regionName '_' file_stem '.nc']);
+        if ~exist(ncpath, 'dir'), mkdir(ncpath); end
+        scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
         if exist(scfile, 'file'), delete(scfile); end
         nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4');
         nccreate(scfile, varname,  'Dimensions', {'time', Inf});

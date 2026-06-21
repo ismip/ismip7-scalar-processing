@@ -69,14 +69,15 @@ try:
         print(f'Script failed:\n{r.stderr}')
         sys.exit(1)
 
-    vaf_files = [f for f in os.listdir(tmpdir) if f.startswith('slvaf_') and f.endswith('.nc')]
-    a20_files = [f for f in os.listdir(tmpdir) if f.startswith('sla20_') and f.endswith('.nc')]
+    nc_dir = os.path.join(tmpdir, 'nc')
+    vaf_files = [f for f in os.listdir(nc_dir) if f.startswith('slvaf_') and f.endswith('.nc')]
+    a20_files = [f for f in os.listdir(nc_dir) if f.startswith('sla20_') and f.endswith('.nc')]
     if not vaf_files:
         print('No output file found')
         sys.exit(1)
 
-    ds_v  = nc.Dataset(os.path.join(tmpdir, vaf_files[0]))
-    ds_a  = nc.Dataset(os.path.join(tmpdir, a20_files[0]))
+    ds_v  = nc.Dataset(os.path.join(nc_dir, vaf_files[0]))
+    ds_a  = nc.Dataset(os.path.join(nc_dir, a20_files[0]))
     t     = ds_v.variables['time'][:]
     dates = nc.num2date(t, ds_v.variables['time'].units, ds_v.variables['time'].calendar)
     years = np.array([d.year for d in dates])

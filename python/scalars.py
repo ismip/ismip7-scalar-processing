@@ -3,7 +3,7 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import argparse
 import csv
@@ -60,7 +60,7 @@ parser.add_argument("--refyear",        type=int, default=None,         help="Ye
 parser.add_argument("--res",            default="08",                   help="Resolution for data files (e.g. 08 for 8 km)")
 parser.add_argument("--datapath",       default=None,                   help="Path to generic data files (default: ../Data/<region>)")
 parser.add_argument("--modelpath",      default=None,                   help="Path to model output (default: ../Models/<region>)")
-parser.add_argument("--outpath",        default="./output",             help="Path for output scalar files")
+parser.add_argument("--outpath",        default="../Output",            help="Root path for output (nc/ and csv/ created as subdirectories)")
 parser.add_argument("--histout",        type=int, default=1,
                                                     help="Hist timesteps to prepend to output: 0=none, 1=last only (default), -1=all, N=last N")
 args = parser.parse_args()
@@ -80,7 +80,8 @@ res       = args.res
 datapath  = args.datapath  if args.datapath  else "../Data/" + region
 modelpath = args.modelpath if args.modelpath else "../Models/" + region
 outpath   = args.outpath
-csvpath   = os.path.join(os.path.dirname(outpath), "csv")
+ncpath    = os.path.join(outpath, "nc")
+csvpath   = os.path.join(outpath, "csv")
 histout   = args.histout
 
 
@@ -439,7 +440,8 @@ for regionName, region_mask in vars(regions).items():
         ("slg20", "Sea level contribution based on G2020", sl_G20),
         ("sla20", "Sea level contribution based on A2020", sl_A20),
     ]:
-        scfile = outpath + "/" + varname + "_" + regionName + "_" + file_stem + ".nc"
+        os.makedirs(ncpath, exist_ok=True)
+        scfile = ncpath + "/" + varname + "_" + regionName + "_" + file_stem + ".nc"
         ds = nc.Dataset(scfile, 'w', format='NETCDF4')
         ds.createDimension('time', None)
         ds.description = file_description
