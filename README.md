@@ -10,6 +10,7 @@ Two implementations are provided: **Python** (primary) and **MATLAB**. Conversio
 conda create -n nc
 conda activate nc
 conda install -c conda-forge cdo=2.4.4 nco netCDF4 scipy
+pip install pytest   # for running the test suite
 ```
 
 ## Input data
@@ -41,6 +42,12 @@ ismip7-scalar-processing/                        # repository root
 ├── Output/
 │   ├── nc/                                      # NetCDF output (gitignored)
 │   └── csv/                                     # CSV output (gitignored)
+├── tests/
+│   ├── test_slc_units.py                        # pytest: slc/ physics unit tests (no ext data)
+│   └── test_mini_smoke.py                       # pytest: MINI end-to-end smoke tests
+├── test-data/                                   # committed MINI inputs for self-contained CI
+│   ├── Data/{MINI0,MINI1}/
+│   └── Models/MINI/ISMIP7/{MINI0,MINI1}/{exp}/
 └── manual-tests/
     ├── compare_outputs.py                       # Python vs MATLAB comparison (--region filter)
     ├── test_histout.py                          # integration test for --histout
