@@ -56,6 +56,7 @@ parser.add_argument("--configid",       default=None,                   help="Co
 parser.add_argument("--exp-group",      default=None,                   help="Experiment directory name (CORE, ESM, or PPE)")
 parser.add_argument("--hist",           default=None,                   help="Historical experiment name (default: region-specific)")
 parser.add_argument("--hist-exp-group", default=None,                   help="History experiment directory (default: same as --exp-group)")
+parser.add_argument("--hist-configid",  default=None,                   help="Configuration ID for hist experiment (default: same as --configid)")
 parser.add_argument("--refyear",        type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
 parser.add_argument("--datapath",       default=None,                   help="Path to generic data files (default: ../Data/<region>)")
 parser.add_argument("--modelpath",      default=None,                   help="Path to model output (default: ../Models/<region>)")
@@ -80,7 +81,8 @@ forcingid = args.forcingid  or DEFAULTS[region]["forcingid"]
 configid  = args.configid   or DEFAULTS[region]["configid"]
 exp_group = args.exp_group  or DEFAULTS[region]["exp_group"]
 hist      = args.hist or DEFAULTS[region].get("hist", "historical")
-hist_exp_group = args.hist_exp_group or exp_group
+hist_exp_group  = args.hist_exp_group  or exp_group
+hist_configid   = args.hist_configid   or configid
 datapath  = args.datapath  if args.datapath  else os.path.join(_script_dir, "..", "Data",   region)
 modelpath = args.modelpath if args.modelpath else os.path.join(_script_dir, "..", "Models", region)
 
@@ -253,9 +255,9 @@ topg = idat.variables["topg"][:,:,:]
 idat.close()
 
 # Historical experiment
-histpath = modelpath + "/" + group + "/" + model + "/" + hist_exp_group + "/" + configid
+histpath = modelpath + "/" + group + "/" + model + "/" + hist_exp_group + "/" + hist_configid
 # Model geometry
-idat = nc.Dataset(find_model_file(histpath, "lithk", region, group, model, modelid, esm, forcingid, hist, configid), 'r')
+idat = nc.Dataset(find_model_file(histpath, "lithk", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
 time_ref_var = idat.variables["time"]
 n_hist = len(time_ref_var)
 time_hist = time_ref_var[:]
@@ -293,7 +295,7 @@ need_hist_arrays = need_hist or (hist_n_out > 0)
 if need_hist_arrays:
     lithk_hist = idat.variables["lithk"][:,:,:]
 idat.close()
-idat = nc.Dataset(find_model_file(histpath, "topg", region, group, model, modelid, esm, forcingid, hist, configid), 'r')
+idat = nc.Dataset(find_model_file(histpath, "topg", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
 topg_ref = idat.variables["topg"][ref_idx,:,:]
 if need_hist_arrays:
     topg_hist = idat.variables["topg"][:,:,:]
@@ -350,10 +352,10 @@ idat.close()
 sftgrf_hist = sftgrf
 sftflf_hist = sftflf
 if hist_n_out > 0 and exp != hist:
-    idat = nc.Dataset(find_model_file(histpath, "sftgrf", region, group, model, modelid, esm, forcingid, hist, configid), 'r')
+    idat = nc.Dataset(find_model_file(histpath, "sftgrf", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
     sftgrf_hist = idat.variables["sftgrf"][:,:,:]
     idat.close()
-    idat = nc.Dataset(find_model_file(histpath, "sftflf", region, group, model, modelid, esm, forcingid, hist, configid), 'r')
+    idat = nc.Dataset(find_model_file(histpath, "sftflf", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
     sftflf_hist = idat.variables["sftflf"][:,:,:]
     idat.close()
 
@@ -646,7 +648,7 @@ for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
     fl_hist, fl_time_hist = None, None
     if hist_n_out > 0 and exp != hist:
         try:
-            fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, configid)
+            fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, hist_configid)
             idat = nc.Dataset(fl_hist_file, 'r')
             fl_hist      = idat.variables[input_var][:,:,:]
             fl_time_hist = idat.variables['time'][:]

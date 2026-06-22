@@ -109,7 +109,14 @@ conda run -n scalars python3 python/scalars.py --region GrIS --group NORCE --mod
   --exp-group ESM  # explicit non-default submission example
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid` (alias `--ism-member-id`), `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid` (alias `--ism-member-id`), `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--hist-configid`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
+
+`--hist-configid` is needed when the historical and projection experiments have different configids — the normal case for CORE runs, where e.g. C001 (historical) is the shared reference for C003, C005, and C007 (projections). Example:
+```bash
+conda run -n scalars python3 python/scalars.py --region AIS \
+  --configid C007 --experiment ssp585 --hist historical --hist-configid C001 --exp-group CORE
+```
+When omitted, `--hist-configid` defaults to the same value as `--configid`.
 
 Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from.
 
@@ -151,7 +158,7 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
-Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `outpath`). Resolution is auto-detected.
+Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `hist_configid`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `outpath`). Resolution is auto-detected.
 
 ### Model density parameters
 

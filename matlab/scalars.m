@@ -35,6 +35,7 @@ if ~exist('configid',      'var') || isempty(configid),      configid      = def
 if ~exist('exp_group',     'var') || isempty(exp_group),     exp_group     = def_exp_group;            end
 if ~exist('hist',          'var') || isempty(hist),          hist          = def_hist;                  end
 if ~exist('hist_exp_group','var') || isempty(hist_exp_group),hist_exp_group = exp_group;               end
+if ~exist('hist_configid', 'var') || isempty(hist_configid), hist_configid  = configid;                end
 if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
 if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
 
@@ -147,7 +148,7 @@ iaf2GIC = double(ncread(gicinput, 'iaf2')); % (nx, ny)
 % Prepare model output
 
 exppath  = [modelpath '/' group '/' model '/' exp_group '/' configid];
-histpath = [modelpath '/' group '/' model '/' hist_exp_group '/' configid];
+histpath = [modelpath '/' group '/' model '/' hist_exp_group '/' hist_configid];
 
 lithk_file = find_model_file(exppath, 'lithk', region, group, model, modelid, esm, forcingid, exp, configid);
 lithk      = double(ncread(lithk_file, 'lithk')); % (nx, ny, nt)
