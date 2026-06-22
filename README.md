@@ -48,7 +48,7 @@ ismip7-scalar-processing/                        # repository root
 │   ├── Data/{MINI0,MINI1}/
 │   └── Models/MINI/ISMIP7/{MINI0,MINI1}/{exp}/
 └── manual-tests/
-    ├── compare_outputs.py                       # Python vs MATLAB comparison (--region filter)
+    ├── compare_outputs.py                       # Python vs MATLAB comparison, all variables
     ├── test_histout.py                          # integration test for --histout
     ├── test_refyear.py                          # integration test for --refyear
     ├── test_basins.py                           # static check: sum-of-basins == whole-sheet area
@@ -120,34 +120,34 @@ When omitted, `--hist-configid` defaults to the same value as `--configid`.
 
 Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from.
 
-**SLC output** — six files per mask region (three NetCDF + three CSV, one per SLC method), always in two variants: with and without GIC masking:
+**SLC output** — always in two GIC variants (with and without). For whole-sheet output (default), the mask name is omitted from the filename; for basin output (`--basins`) it is included:
 
 ```
-Output/nc/slvaf_{mask}-gic_{...}.nc    # with GIC masking
-Output/nc/slvaf_{mask}_{...}.nc        # without GIC masking
-Output/nc/slg20_{mask}-gic_{...}.nc
-Output/nc/slg20_{mask}_{...}.nc
-Output/nc/sla20_{mask}-gic_{...}.nc
-Output/nc/sla20_{mask}_{...}.nc
-Output/csv/slvaf_{mask}-gic_{...}.csv
-...
+# Whole ice sheet (default):
+Output/nc/slvaf-gic_{...}.nc    # with GIC masking (NC off by default; CSV always written)
+Output/nc/slvaf_{...}.nc        # without GIC masking
+Output/csv/slvaf-gic_{...}.csv
+Output/csv/slvaf_{...}.csv
+# Basin output (--basins):
+Output/nc/slvaf-gic_{mask}_{...}.nc
+Output/nc/slvaf_{mask}_{...}.nc
 ```
 
-where `{mask}` is `ais`/`gris` (whole ice sheet) or a basin name (`wais`, `ce`, `no`, `r01`, …), and `{y0}-{y1}` is the nominal simulation year range. The `-gic` suffix means glaciers and ice caps (GIC) are excluded from the integral. Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period). The `region` column in the CSV matches the `{mask}` field in the filename.
+where `{...}` is `{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}`, and `{mask}` is a basin name (`wais`, `ce`, `no`, `r01`, …). The `-gic` suffix means glaciers and ice caps (GIC) are excluded from the integral. Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period). The `region` column in the CSV holds the display name (`ais`/`gris` or basin name) with `-gic` suffix for the GIC variant.
 
-**Other scalar output** — one NetCDF per variable per mask region, no GIC masking, plain region name:
+**Other scalar output** — one NetCDF per variable, no GIC masking. Mask name omitted for whole-sheet, included for basins:
 
 ```
-Output/nc/lim_{mask}_{...}.nc
-Output/nc/limnsw_{mask}_{...}.nc
-Output/nc/iareagr_{mask}_{...}.nc
-Output/nc/iareafl_{mask}_{...}.nc
-Output/nc/tendacabf_{mask}_{...}.nc
-Output/nc/tendlibmassbfgr_{mask}_{...}.nc
-Output/nc/tendlibmassbffl_{mask}_{...}.nc
-Output/nc/tendlicalvf_{mask}_{...}.nc
-Output/nc/tendlifmassbf_{mask}_{...}.nc
-Output/nc/tendligroundf_{mask}_{...}.nc
+Output/nc/lim_{...}.nc
+Output/nc/limnsw_{...}.nc
+Output/nc/iareagr_{...}.nc
+Output/nc/iareafl_{...}.nc
+Output/nc/tendacabf_{...}.nc
+Output/nc/tendlibmassbfgr_{...}.nc
+Output/nc/tendlibmassbffl_{...}.nc
+Output/nc/tendlicalvf_{...}.nc
+Output/nc/tendlifmassbf_{...}.nc
+Output/nc/tendligroundf_{...}.nc
 ```
 
 ### MATLAB
@@ -162,7 +162,7 @@ Set workspace variables before `run()` to override any default (`group`, `model`
 
 ### Model density parameters
 
-Each model directory must contain a `params.nc` file with ice (`rhoi`), ocean (`rhow`), and freshwater (`rhof`) densities. Use `tools/set_params.sh` to generate one from `tools/params_template.nc`:
+Each model directory must contain a `params.nc` file with ice (`rhoi`), ocean (`rhow`), and freshwater (`rhof`) densities. Use `tools/set_params.sh` to generate one:
 
 ```bash
 bash tools/set_params.sh <region> <group> <model> [rhoi] [rhow] [rhof]
@@ -170,7 +170,13 @@ bash tools/set_params.sh <region> <group> <model> [rhoi] [rhow] [rhof]
 # Examples:
 bash tools/set_params.sh GrIS NORCE CISM16x-MAR312-p50
 bash tools/set_params.sh AIS  VUW   PISM1 910 1028 1000
+
+# Write to a non-default model tree (e.g. an external repo):
+bash tools/set_params.sh AIS ISMIP7 SYNTH1 \
+    --modelpath /path/to/external/Models/AIS
 ```
+
+The script resolves paths from its own location and works correctly when invoked from any directory. `--modelpath` overrides the default `Models/<region>` at the repo root.
 
 ## MINI test suite
 
@@ -255,7 +261,7 @@ conda run -n scalars python3 compare_outputs.py --region AIS \
     --py-outpath ../Output-py/nc --mat-outpath ../Output-mat/nc
 ```
 
-The comparison script matches files by their full ISMIP7 stem and checks all three SLC methods. Expected tolerance: < 1 × 10⁻¹⁰ m.
+The comparison script discovers all Python NC files and matches them against MATLAB output by filename. It covers all output variables — SLC methods (slvaf, slg20, sla20), ST scalars (lim, limnsw, iareagr, iareafl), and FL scalars (tendacabf, …, tendligroundf). SLC variables are checked against an absolute tolerance of 1 × 10⁻¹⁰ m; all others against a relative tolerance of 1 × 10⁻¹⁰. Verified differences are at machine-epsilon level (~10⁻¹⁵ relative) for all variables.
 
 ### Generating SYNTH1 test files
 

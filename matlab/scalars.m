@@ -53,7 +53,7 @@ verbose = false;
 % File names
 
 % Auto-detect resolution from model grid x-spacing
-exppath_tmp = fullfile(modelpath, group, model, exp_group);
+exppath_tmp = fullfile(modelpath, group, model, exp_group, configid);
 lithk_tmp   = find_model_file(exppath_tmp, 'lithk', region, group, model, modelid, esm, forcingid, exp, configid);
 x_tmp       = double(ncread(lithk_tmp, 'x'));
 dx_km       = round(abs(x_tmp(2) - x_tmp(1)) / 1000);
@@ -170,9 +170,9 @@ end
 topg = double(ncread(find_model_file(exppath, 'topg', region, group, model, modelid, esm, forcingid, exp, configid), 'topg')); % (nx, ny, nt)
 
 % Historical experiment
-hist_lithk_file = find_model_file(histpath, 'lithk', region, group, model, modelid, esm, forcingid, hist, configid);
+hist_lithk_file = find_model_file(histpath, 'lithk', region, group, model, modelid, esm, forcingid, hist, hist_configid);
 lithk_hist_all  = double(ncread(hist_lithk_file, 'lithk'));
-topg_hist_all   = double(ncread(find_model_file(histpath, 'topg', region, group, model, modelid, esm, forcingid, hist, configid), 'topg'));
+topg_hist_all   = double(ncread(find_model_file(histpath, 'topg', region, group, model, modelid, esm, forcingid, hist, hist_configid), 'topg'));
 time_hist       = double(ncread(hist_lithk_file, 'time'));
 n_hist          = size(lithk_hist_all, 3);
 
@@ -238,8 +238,8 @@ sftflf = double(ncread(find_model_file(exppath, 'sftflf', region, group, model, 
 sftgrf_hist = sftgrf;
 sftflf_hist = sftflf;
 if hist_n_out > 0 && ~strcmp(exp, hist)
-    sftgrf_hist = double(ncread(find_model_file(histpath, 'sftgrf', region, group, model, modelid, esm, forcingid, hist, configid), 'sftgrf'));
-    sftflf_hist = double(ncread(find_model_file(histpath, 'sftflf', region, group, model, modelid, esm, forcingid, hist, configid), 'sftflf'));
+    sftgrf_hist = double(ncread(find_model_file(histpath, 'sftgrf', region, group, model, modelid, esm, forcingid, hist, hist_configid), 'sftgrf'));
+    sftflf_hist = double(ncread(find_model_file(histpath, 'sftflf', region, group, model, modelid, esm, forcingid, hist, hist_configid), 'sftflf'));
 end
 
 if verbose
@@ -425,7 +425,11 @@ for igic = 1:2
             long_name = nc_vars{iv,2};
             sl_data   = nc_vars{iv,3};
             if ~exist(ncpath, 'dir'), mkdir(ncpath); end
-            scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
+            if strcmp(regionName_raw, 'mm') && ~flg_bm
+                scfile = fullfile(ncpath, [varname gic_suffix '_' file_stem '.nc']);
+            else
+                scfile = fullfile(ncpath, [varname gic_suffix '_' dispName '_' file_stem '.nc']);
+            end
             if exist(scfile, 'file'), delete(scfile); end
             nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4');
             nccreate(scfile, varname,  'Dimensions', {'time', Inf});
@@ -461,7 +465,11 @@ for igic = 1:2
         for iv = 1:size(csv_vars, 1)
             varname  = csv_vars{iv,1};
             sl_data  = csv_vars{iv,2};
-            csvfile  = fullfile(csvpath, [varname '_' regionName '_' file_stem '.csv']);
+            if strcmp(regionName_raw, 'mm') && ~flg_bm
+                csvfile = fullfile(csvpath, [varname gic_suffix '_' file_stem '.csv']);
+            else
+                csvfile = fullfile(csvpath, [varname gic_suffix '_' dispName '_' file_stem '.csv']);
+            end
             fid      = fopen(csvfile, 'w');
             % Header
             fprintf(fid, '%s', strjoin([meta_keys, arrayfun(@(y) sprintf('y%d',y), csv_years, 'UniformOutput', false)], ','));
@@ -556,7 +564,11 @@ for ireg = 1:length(regionNames)
         exp_vals  = st_vars{iv,5};
         data_out  = [hist_vals; exp_vals];
         if ~exist(ncpath, 'dir'), mkdir(ncpath); end
-        scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
+        if strcmp(regionName_raw, 'mm') && ~flg_bm
+            scfile = fullfile(ncpath, [varname '_' file_stem '.nc']);
+        else
+            scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
+        end
         if exist(scfile, 'file'), delete(scfile); end
         nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'double');
         nccreate(scfile, varname,  'Dimensions', {'time', Inf}, 'Datatype', 'double');
@@ -620,7 +632,7 @@ for ifl = 1:size(fl_scalar_specs, 1)
     fl_time_hist = [];
     if hist_n_out > 0 && ~strcmp(exp, hist)
         try
-            fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, configid);
+            fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, hist_configid);
             fl_hist      = double(ncread(fl_hist_file, input_var));
             fl_time_hist = double(ncread(fl_hist_file, 'time'));
         catch
@@ -686,7 +698,11 @@ for ifl = 1:size(fl_scalar_specs, 1)
         end
 
         if ~exist(ncpath, 'dir'), mkdir(ncpath); end
-        scfile = fullfile(ncpath, [tendvarname '_' regionName '_' fl_file_stem '.nc']);
+        if strcmp(regionName_raw, 'mm') && ~flg_bm
+            scfile = fullfile(ncpath, [tendvarname '_' fl_file_stem '.nc']);
+        else
+            scfile = fullfile(ncpath, [tendvarname '_' regionName '_' fl_file_stem '.nc']);
+        end
         if exist(scfile, 'file'), delete(scfile); end
         nccreate(scfile, 'time',        'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'double');
         nccreate(scfile, tendvarname,   'Dimensions', {'time', Inf}, 'Datatype', 'double');
