@@ -35,8 +35,8 @@ ismip7-scalar-processing/                        # repository root
 │   ├── MINI0/
 │   └── MINI1/
 ├── Models/                                      # default location for model output
-│   ├── AIS/{group}/{model}/{exp_group}/
-│   ├── GrIS/{group}/{model}/{exp_group}/
+│   ├── AIS/{group}/{model}/{exp_group}/{configid}/
+│   ├── GrIS/{group}/{model}/{exp_group}/{configid}/
 │   └── MINI/ISMIP7/{MINI0,MINI1}/{exp}/
 ├── Output/
 │   ├── nc/                                      # NetCDF output (gitignored)
@@ -87,7 +87,7 @@ Example: `lithk_GrIS_NORCE_CISM16x-MAR312-p50_m001_CESM2-WACCM_f001_ssp585_E001_
 | `{configid}` | Configuration counter (`[C/E/P]NNN`) | `E001` |
 | `{startyear}-{endyear}` | Nominal simulation years | `1960-2014` |
 
-Files are stored under `Models/{region}/{group}/{model}/{exp_group}/` where `{exp_group}` is one of `CORE`, `ESM`, or `PPE`.
+Files are stored under `Models/{region}/{group}/{model}/{exp_group}/{configid}/` where `{exp_group}` is one of `CORE`, `ESM`, or `PPE`.
 
 **Time encoding:** ST (state) variables carry timestamps at Jan 1 of year N+1; FL (flux) variables carry timestamps at Jul 1 of year N with `time_bounds`. The filename year range always refers to nominal simulation years (ST timestamp year − 1).
 
@@ -109,7 +109,7 @@ conda run -n scalars python3 python/scalars.py --region GrIS --group NORCE --mod
   --exp-group ESM  # explicit non-default submission example
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid` (alias `--ism-member-id`), `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
 
 Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from.
 
@@ -137,7 +137,10 @@ Output/nc/iareagr_{mask}_{...}.nc
 Output/nc/iareafl_{mask}_{...}.nc
 Output/nc/tendacabf_{mask}_{...}.nc
 Output/nc/tendlibmassbfgr_{mask}_{...}.nc
-...
+Output/nc/tendlibmassbffl_{mask}_{...}.nc
+Output/nc/tendlicalvf_{mask}_{...}.nc
+Output/nc/tendlifmassbf_{mask}_{...}.nc
+Output/nc/tendligroundf_{mask}_{...}.nc
 ```
 
 ### MATLAB
@@ -246,17 +249,6 @@ conda run -n scalars python3 compare_outputs.py --region AIS \
 ```
 
 The comparison script matches files by their full ISMIP7 stem and checks all three SLC methods. Expected tolerance: < 1 × 10⁻¹⁰ m.
-
-## Converting old-format submissions
-
-Conversion scripts for old-format (ISMIP6, 5-field naming) submissions live in the separate repo `convert-submissions-ismip6-to-ismip7` (sibling directory). See that repo for usage.
-
-Converted files can be validated with the [ISM_SimulationChecker](https://github.com/ismip/ISM_SimulationChecker):
-
-```bash
-cd ISM_SimulationChecker
-python compliance_checker.py --source-path ../ismip7-scalar-processing/Models/GrIS/NORCE/CISM16x-MAR312-p50/ESM --variable-list ismip7_xyt
-```
 
 ### Generating SYNTH1 test files
 

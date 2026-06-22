@@ -146,8 +146,8 @@ iaf2GIC = double(ncread(gicinput, 'iaf2')); % (nx, ny)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Prepare model output
 
-exppath  = [modelpath '/' group '/' model '/' exp_group];
-histpath = [modelpath '/' group '/' model '/' hist_exp_group];
+exppath  = [modelpath '/' group '/' model '/' exp_group '/' configid];
+histpath = [modelpath '/' group '/' model '/' hist_exp_group '/' configid];
 
 lithk_file = find_model_file(exppath, 'lithk', region, group, model, modelid, esm, forcingid, exp, configid);
 lithk      = double(ncread(lithk_file, 'lithk')); % (nx, ny, nt)
@@ -581,6 +581,7 @@ fl_scalar_specs = { ...
     'tendlibmassbffl', 'libmassbffl', 'tendency_of_land_ice_mass_due_to_basal_mass_balance_floating', 'kg s-1'; ...
     'tendlicalvf',     'licalvf',     'tendency_of_land_ice_mass_due_to_calving',                     'kg s-1'; ...
     'tendlifmassbf',   'lifmassbf',   'tendency_of_land_ice_mass_due_to_ice_front_melting',            'kg s-1'; ...
+    'tendligroundf',   'ligroundf',   'tendency_of_land_ice_mass_due_to_grounding_line_migration',     'kg s-1'; ...
 };
 skipped_fl = {};
 

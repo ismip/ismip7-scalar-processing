@@ -49,7 +49,7 @@ parser.add_argument("--region",         required=True, choices=["AIS", "GrIS"],
 parser.add_argument("--group",          default=None,                   help="Submitting group/lab")
 parser.add_argument("--model",          default=None,                   help="Ice sheet model name")
 parser.add_argument("--experiment",     default=None,                   help="Experiment name (e.g. ssp126, ctrl)")
-parser.add_argument("--modelid",        default=None,                   help="ISM member ID (e.g. m001)")
+parser.add_argument("--modelid", "--ism-member-id", default=None,      help="ISM member ID (e.g. m001)")
 parser.add_argument("--esm",            default=None,                   help="Climate forcing model (e.g. NorESM2-MM)")
 parser.add_argument("--forcingid",      default=None,                   help="Forcing realization (e.g. f001)")
 parser.add_argument("--configid",       default=None,                   help="Configuration ID (e.g. C001)")
@@ -102,7 +102,7 @@ def find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid,
 
 def detect_res(modelpath, region, group, model, modelid, esm, forcingid, exp, configid, exp_group):
     """Derive data-file resolution string (e.g. '08') from model grid x-spacing."""
-    exppath = os.path.join(modelpath, group, model, exp_group)
+    exppath = os.path.join(modelpath, group, model, exp_group, configid)
     f = find_model_file(exppath, "lithk", region, group, model, modelid, esm, forcingid, exp, configid)
     ds = nc.Dataset(f, 'r')
     dx_m = abs(float(ds.variables["x"][1]) - float(ds.variables["x"][0]))
@@ -238,7 +238,7 @@ idat.close()
 # Prepare model output
 
 # Main experiment
-exppath = modelpath + "/" + group + "/" + model + "/" + exp_group
+exppath = modelpath + "/" + group + "/" + model + "/" + exp_group + "/" + configid
 # Model geometry
 idat = nc.Dataset(find_model_file(exppath, "lithk", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
 lithk = idat.variables["lithk"][:,:,:]
@@ -253,7 +253,7 @@ topg = idat.variables["topg"][:,:,:]
 idat.close()
 
 # Historical experiment
-histpath = modelpath + "/" + group + "/" + model + "/" + hist_exp_group
+histpath = modelpath + "/" + group + "/" + model + "/" + hist_exp_group + "/" + configid
 # Model geometry
 idat = nc.Dataset(find_model_file(histpath, "lithk", region, group, model, modelid, esm, forcingid, hist, configid), 'r')
 time_ref_var = idat.variables["time"]
@@ -381,6 +381,7 @@ FL_SCALAR_SPECS = [
     ("tendlibmassbffl", "libmassbffl", "tendency_of_land_ice_mass_due_to_basal_mass_balance_floating", "kg s-1"),
     ("tendlicalvf",     "licalvf",     "tendency_of_land_ice_mass_due_to_calving",                     "kg s-1"),
     ("tendlifmassbf",   "lifmassbf",   "tendency_of_land_ice_mass_due_to_ice_front_melting",            "kg s-1"),
+    ("tendligroundf",   "ligroundf",   "tendency_of_land_ice_mass_due_to_grounding_line_migration",     "kg s-1"),
 ]
 skipped_scalars = []
 
