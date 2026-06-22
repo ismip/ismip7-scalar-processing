@@ -267,14 +267,18 @@ The comparison script discovers all Python NC files and matches them against MAT
 
 ### Generating SYNTH1 test files
 
-The ISM_SimulationChecker includes a `generate_test_files.py` script that creates synthetic model output for testing. The commands below produce the ISMIP7/SYNTH1 files that the scalar processing scripts expect by default (output assumed to land under `Models/`):
+The [ISM_SimulationChecker](https://github.com/ismip/ISM_SimulationChecker) includes a `generate_test_files.py` script that creates synthetic model output for testing. The commands below produce the ISMIP7/SYNTH1 files that the scalar processing scripts expect by default (output assumed to land under `Models/`):
 
 ```bash
 # AIS — one historical timestep + full ssp585 projection
-python generate/generate_test_files.py --grid AIS_16000m --scenario historical --xyt --nyears 1   --start-year 2014
-python generate/generate_test_files.py --grid AIS_16000m --scenario ssp585    --xyt --nyears 286  --start-year 2015
+python generate/generate_test_files.py --grid AIS_16000m --scenario historical \
+  --set-counter C001 --xyt --include-non-mandatory --nyears 1  --start-year 2014 
+python generate/generate_test_files.py --grid AIS_16000m --scenario ssp585 \
+  --set-counter C007 --xyt --include-non-mandatory --nyears 286 --start-year 2015
 
 # GrIS — 55-year historical run + ctrl projection
-python generate/generate_test_files.py --grid GrIS_16000m --scenario historical --xyt --nyears 55  --start-year 1960
-python generate/generate_test_files.py --grid GrIS_16000m --scenario ctrl       --xyt --nyears 286 --start-year 2015
+python generate/generate_test_files.py --grid GrIS_16000m --scenario historical \
+  --set-counter C001 --xyt --include-non-mandatory --nyears 55  --start-year 1960
+python generate/generate_test_files.py --grid GrIS_16000m --scenario ctrl \
+  --set-counter C009 --xyt --include-non-mandatory --nyears 286 --start-year 2015
 ```
