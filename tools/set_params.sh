@@ -9,7 +9,7 @@
 #   group    Submitting group/lab (e.g. NORCE, VUW)
 #   model    Ice sheet model name (e.g. CISM16x-MAR312-p50, PISM1)
 #   rhoi     Ice density in kg/m³       (default: 917)
-#   rhow     Ocean water density kg/m³  (default: 1026)
+#   rhow     Ocean water density kg/m³  (default: 1027)
 #   rhof     Freshwater density kg/m³   (default: 1000)
 #
 # Examples:
@@ -27,7 +27,7 @@ region=$1
 group=$2
 model=$3
 rhoi=${4:-917}
-rhow=${5:-1026}
+rhow=${5:-1027}
 rhof=${6:-1000}
 
 modelpath="../Models/${region}"

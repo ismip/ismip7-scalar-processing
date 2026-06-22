@@ -34,12 +34,12 @@ FILE_CONFIG = {
 
 # Region-specific defaults
 DEFAULTS = {
-    "AIS":  {"group": "VUW",   "model": "PISM1",             "experiment": "ssp585",
-             "modelid": "m001", "esm": "CESM2", "forcingid": "f001", "configid": "E001",
-             "exp_group": "ESM"},
-    "GrIS": {"group": "NORCE", "model": "CISM16x-MAR312-p50", "experiment": "ssp585",
-             "modelid": "m001", "esm": "CESM2-WACCM",  "forcingid": "f001", "configid": "E001",
-             "exp_group": "ESM"},
+    "AIS":  {"group": "ISMIP7", "model": "SYNTH1",  "experiment": "ssp585", "hist": "historical",
+             "modelid": "m001", "esm": "CESM2-WACCM", "forcingid": "f001", "configid": "C001",
+             "exp_group": "CORE"},
+    "GrIS": {"group": "ISMIP7", "model": "SYNTH1",  "experiment": "ctrl", "hist": "historical",
+             "modelid": "m001", "esm": "CESM2-WACCM", "forcingid": "f001", "configid": "C001",
+             "exp_group": "CORE"},
 }
 
 # User settings
@@ -54,7 +54,7 @@ parser.add_argument("--esm",            default=None,                   help="Cl
 parser.add_argument("--forcingid",      default=None,                   help="Forcing realization (e.g. f001)")
 parser.add_argument("--configid",       default=None,                   help="Configuration ID (e.g. C001)")
 parser.add_argument("--exp-group",      default=None,                   help="Experiment directory name (CORE, ESM, or PPE)")
-parser.add_argument("--hist",           default="historical",           help="Historical experiment name")
+parser.add_argument("--hist",           default=None,                   help="Historical experiment name (default: region-specific)")
 parser.add_argument("--hist-exp-group", default=None,                   help="History experiment directory (default: same as --exp-group)")
 parser.add_argument("--refyear",        type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
 parser.add_argument("--datapath",       default=None,                   help="Path to generic data files (default: ../Data/<region>)")
@@ -79,7 +79,7 @@ esm       = args.esm        or DEFAULTS[region]["esm"]
 forcingid = args.forcingid  or DEFAULTS[region]["forcingid"]
 configid  = args.configid   or DEFAULTS[region]["configid"]
 exp_group = args.exp_group  or DEFAULTS[region]["exp_group"]
-hist      = args.hist
+hist      = args.hist or DEFAULTS[region].get("hist", "historical")
 hist_exp_group = args.hist_exp_group or exp_group
 datapath  = args.datapath  if args.datapath  else os.path.join(_script_dir, "..", "Data",   region)
 modelpath = args.modelpath if args.modelpath else os.path.join(_script_dir, "..", "Models", region)
@@ -113,6 +113,15 @@ def region_display_name(raw, region):
     """Map internal region key to output name: mm → ais/gris, others unchanged."""
     return region.lower() if raw == 'mm' else raw
 
+def make_out_stem(varname, suffix, regionName_raw, regionName, base_stem):
+    """Build output filename stem (without extension).
+    Full-grid (mm) in default mode: no region prefix → matches model-file structure.
+    Basin mode or basin regions: include region name as second field.
+    """
+    if regionName_raw == 'mm' and not flg_bm:
+        return f"{varname}{suffix}_{base_stem}"
+    return f"{varname}{suffix}_{regionName}_{base_stem}"
+
 res = detect_res(modelpath, region, group, model, modelid, esm, forcingid, exp, configid, exp_group)
 print(f"Auto-detected resolution: {res} km")
 
@@ -129,6 +138,16 @@ flg_A20_cumul = True
 
 # More output
 verbose = False
+
+# Output format control — flip to enable/disable NC or CSV per scalar class
+FLG_SLC_NC      = True   # SLC no-GIC masking: write NetCDF
+FLG_SLC_CSV     = True   # SLC no-GIC masking: write CSV
+FLG_SLC_GIC_NC  = False  # SLC -gic masked:    write NetCDF
+FLG_SLC_GIC_CSV = True   # SLC -gic masked:    write CSV
+FLG_ST_NC       = True   # ST scalars:         write NetCDF
+FLG_ST_CSV      = False  # ST scalars:         write CSV
+FLG_FL_NC       = True   # FL scalars:         write NetCDF
+FLG_FL_CSV      = False  # FL scalars:         write CSV
 
 ################################################################
 # File names and mapping
@@ -382,6 +401,10 @@ nominal_yrs = [d.year - 1 for d in dates_out]
 
 for gic_mask, gic_suffix in [(iaf2GIC, '-gic'), (np.ones_like(iaf2GIC), '')]:
 
+    is_gic   = gic_suffix == '-gic'
+    write_nc  = FLG_SLC_GIC_NC  if is_gic else FLG_SLC_NC
+    write_csv = FLG_SLC_GIC_CSV if is_gic else FLG_SLC_CSV
+
     # Reference state for this GIC mode
     H0 = lithk_ref * maxmask1 * gic_mask
     B0 = topg_ref
@@ -389,8 +412,8 @@ for gic_mask, gic_suffix in [(iaf2GIC, '-gic'), (np.ones_like(iaf2GIC), '')]:
     S0 = topg_ref * 0.0  # Fix sea level to 0
 
     for regionName_raw, region_mask in vars(regions).items():
-        regionName = region_display_name(regionName_raw, region) + gic_suffix
-        print(f"{regionName}")
+        regionName = region_display_name(regionName_raw, region)
+        print(f"{regionName}{gic_suffix}")
 
         VAF_list = []
         G20_list = []
@@ -480,57 +503,61 @@ for gic_mask, gic_suffix in [(iaf2GIC, '-gic'), (np.ones_like(iaf2GIC), '')]:
             ("slg20", "Sea level contribution based on G2020", sl_G20),
             ("sla20", "Sea level contribution based on A2020", sl_A20),
         ]:
-            os.makedirs(ncpath, exist_ok=True)
-            scfile = ncpath + "/" + varname + "_" + regionName + "_" + file_stem + ".nc"
-            ds = nc.Dataset(scfile, 'w', format='NETCDF4')
-            ds.createDimension('time', None)
-            ds.description = file_description
-            var_time = ds.createVariable('time',   'f8', ('time',), zlib=True)
-            var_slc  = ds.createVariable(varname,  'f8', ('time',), zlib=True)
-            var_time.units     = time_units
-            var_time.long_name = time_long_name
-            var_time.calendar  = time_calendar
-            var_slc.long_name  = long_name
-            var_slc.units      = 'm'
-            var_time[:]  = time_out
-            var_slc[:]   = sl_array[:]
-            ds.close()
-            print("Created file ", scfile)
+            if write_nc:
+                os.makedirs(ncpath, exist_ok=True)
+                stem   = make_out_stem(varname, gic_suffix, regionName_raw, regionName, file_stem)
+                scfile = ncpath + "/" + stem + ".nc"
+                ds = nc.Dataset(scfile, 'w', format='NETCDF4')
+                ds.createDimension('time', None)
+                ds.description = file_description
+                var_time = ds.createVariable('time',   'f8', ('time',), zlib=True)
+                var_slc  = ds.createVariable(varname,  'f8', ('time',), zlib=True)
+                var_time.units     = time_units
+                var_time.long_name = time_long_name
+                var_time.calendar  = time_calendar
+                var_slc.long_name  = long_name
+                var_slc.units      = 'm'
+                var_time[:]  = time_out
+                var_slc[:]   = sl_array[:]
+                ds.close()
+                print("Created file ", scfile)
 
         ###############################################
         # Write SLC CSV files (one per SLC method)
 
-        csv_years = range(1850, 2301)
-        meta = {
-            "ice_source":    region,
-            "region":        regionName,
-            "group":         group,
-            "model":         model,
-            "model_variant": modelid,
-            "scenario":      exp,
-            "GCM":           esm,
-            "forcingid":     forcingid,
-            "configid":      configid,
-        }
-        meta_keys = list(meta.keys())
-        header = meta_keys + [f"y{y}" for y in csv_years]
+        if write_csv:
+            csv_years = range(1850, 2301)
+            meta = {
+                "ice_source":    region,
+                "region":        regionName,
+                "group":         group,
+                "model":         model,
+                "model_variant": modelid,
+                "scenario":      exp,
+                "GCM":           esm,
+                "forcingid":     forcingid,
+                "configid":      configid,
+            }
+            meta_keys = list(meta.keys())
+            header = meta_keys + [f"y{y}" for y in csv_years]
 
-        os.makedirs(csvpath, exist_ok=True)
-        out_of_range = [y for y in nominal_yrs if y not in csv_years]
-        if out_of_range:
-            print(f"Warning: {len(out_of_range)} year(s) outside CSV window {csv_years[0]}–{csv_years[-1]+1} "
-                  f"will be dropped: {out_of_range[:5]}{'...' if len(out_of_range)>5 else ''}")
-        for varname, sl_array in [("slvaf", sl_VAF), ("slg20", sl_G20), ("sla20", sl_A20)]:
-            year_to_slc = dict(zip(nominal_yrs, sl_array))
-            row = [meta[k] for k in meta_keys] + [
-                year_to_slc[y] if y in year_to_slc else "NA" for y in csv_years
-            ]
-            csvfile = csvpath + "/" + varname + "_" + regionName + "_" + file_stem + ".csv"
-            with open(csvfile, 'w', newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(header)
-                writer.writerow(row)
-            print("Created file ", csvfile)
+            os.makedirs(csvpath, exist_ok=True)
+            out_of_range = [y for y in nominal_yrs if y not in csv_years]
+            if out_of_range:
+                print(f"Warning: {len(out_of_range)} year(s) outside CSV window {csv_years[0]}–{csv_years[-1]+1} "
+                      f"will be dropped: {out_of_range[:5]}{'...' if len(out_of_range)>5 else ''}")
+            for varname, sl_array in [("slvaf", sl_VAF), ("slg20", sl_G20), ("sla20", sl_A20)]:
+                year_to_slc = dict(zip(nominal_yrs, sl_array))
+                row = [meta[k] for k in meta_keys] + [
+                    year_to_slc[y] if y in year_to_slc else "NA" for y in csv_years
+                ]
+                stem    = make_out_stem(varname, gic_suffix, regionName_raw, regionName, file_stem)
+                csvfile = csvpath + "/" + stem + ".csv"
+                with open(csvfile, 'w', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(header)
+                    writer.writerow(row)
+                print("Created file ", csvfile)
 
 #############################################################
 # ST scalar variables (no GIC masking, plain display name)
@@ -570,21 +597,28 @@ for regionName_raw, region_mask in vars(regions).items():
     ]
     for varname, long_name, units, hist_vals, exp_vals in ST_SCALAR_SPECS:
         data_out = np.concatenate([hist_vals, exp_vals])
-        scfile = ncpath + "/" + varname + "_" + regionName + "_" + file_stem + ".nc"
-        ds = nc.Dataset(scfile, 'w', format='NETCDF4')
-        ds.createDimension('time', None)
-        ds.description = file_description
-        var_time = ds.createVariable('time',   'f8', ('time',), zlib=True)
-        var_data = ds.createVariable(varname,  'f8', ('time',), zlib=True)
-        var_time.units     = time_units
-        var_time.long_name = time_long_name
-        var_time.calendar  = time_calendar
-        var_data.long_name = long_name
-        var_data.units     = units
-        var_time[:] = time_out
-        var_data[:] = data_out
-        ds.close()
-        print("Created file ", scfile)
+        stem = make_out_stem(varname, '', regionName_raw, regionName, file_stem)
+        if FLG_ST_NC:
+            os.makedirs(ncpath, exist_ok=True)
+            scfile = ncpath + "/" + stem + ".nc"
+            ds = nc.Dataset(scfile, 'w', format='NETCDF4')
+            ds.createDimension('time', None)
+            ds.description = file_description
+            var_time = ds.createVariable('time',   'f8', ('time',), zlib=True)
+            var_data = ds.createVariable(varname,  'f8', ('time',), zlib=True)
+            var_time.units     = time_units
+            var_time.long_name = time_long_name
+            var_time.calendar  = time_calendar
+            var_data.long_name = long_name
+            var_data.units     = units
+            var_time[:] = time_out
+            var_data[:] = data_out
+            ds.close()
+            print("Created file ", scfile)
+        if FLG_ST_CSV:
+            os.makedirs(csvpath, exist_ok=True)
+            csvfile = csvpath + "/" + stem + ".csv"
+            # (CSV writing for ST scalars not yet implemented)
 
 #############################################################
 # FL scalar variables (one NC file per variable per region, no GIC masking)
@@ -652,22 +686,28 @@ for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
         else:
             fl_integral = exp_integral
 
-        os.makedirs(ncpath, exist_ok=True)
-        scfile = ncpath + "/" + tendvarname + "_" + regionName + "_" + fl_file_stem + ".nc"
-        ds = nc.Dataset(scfile, 'w', format='NETCDF4')
-        ds.createDimension('time', None)
-        ds.description = file_description
-        vt = ds.createVariable('time',      'f8', ('time',), zlib=True)
-        vd = ds.createVariable(tendvarname, 'f8', ('time',), zlib=True)
-        vt.units     = fl_time_units
-        vt.long_name = fl_time_long_name
-        vt.calendar  = fl_time_calendar
-        vd.long_name = long_name
-        vd.units     = units
-        vt[:] = fl_time_out
-        vd[:] = fl_integral
-        ds.close()
-        print("Created file ", scfile)
+        stem = make_out_stem(tendvarname, '', regionName_raw, regionName, fl_file_stem)
+        if FLG_FL_NC:
+            os.makedirs(ncpath, exist_ok=True)
+            scfile = ncpath + "/" + stem + ".nc"
+            ds = nc.Dataset(scfile, 'w', format='NETCDF4')
+            ds.createDimension('time', None)
+            ds.description = file_description
+            vt = ds.createVariable('time',      'f8', ('time',), zlib=True)
+            vd = ds.createVariable(tendvarname, 'f8', ('time',), zlib=True)
+            vt.units     = fl_time_units
+            vt.long_name = fl_time_long_name
+            vt.calendar  = fl_time_calendar
+            vd.long_name = long_name
+            vd.units     = units
+            vt[:] = fl_time_out
+            vd[:] = fl_integral
+            ds.close()
+            print("Created file ", scfile)
+        if FLG_FL_CSV:
+            os.makedirs(csvpath, exist_ok=True)
+            csvfile = csvpath + "/" + stem + ".csv"
+            # (CSV writing for FL scalars not yet implemented)
 
 if skipped_scalars:
     print("\nSkipped scalars (input files not found):")

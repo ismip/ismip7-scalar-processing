@@ -7,8 +7,8 @@ Two implementations are provided: **Python** (primary) and **MATLAB**. Conversio
 ## Requirements
 
 ```bash
-conda create -n nc
-conda activate nc
+conda create -n scalars
+conda activate scalars
 conda install -c conda-forge cdo=2.4.4 nco netCDF4 scipy pytest
 ```
 
@@ -94,19 +94,19 @@ Files are stored under `Models/{region}/{group}/{model}/{exp_group}/` where `{ex
 
 ## Running the scripts
 
-All scripts accept CLI arguments; the default settings match the NORCE/CISM16x-MAR312-p50/ssp585 (GrIS) and VUW/PISM1/ssp585 (AIS) reference configurations. Resolution is auto-detected from the model grid — no `--res` flag needed.
+All scripts accept CLI arguments; the default settings match the ISMIP7/SYNTH1 synthetic test configurations produced by the ISM_SimulationChecker (`--group ISMIP7 --model SYNTH1 --exp-group CORE --esm CESM2-WACCM --configid C001 --experiment ctrl --hist ctrl` for both regions). Resolution is auto-detected from the model grid.
 
 ### Python (primary)
 
 ```bash
 # Run from repo root
-conda run -n nc python3 python/scalars.py --region AIS
-conda run -n nc python3 python/scalars.py --region GrIS
-conda run -n nc python3 python/scalars.py --region AIS --basins          # add per-basin output
-conda run -n nc python3 python/scalars.py --region AIS --basins --no-mm  # basins only, skip whole-sheet
-conda run -n nc python3 python/scalars.py --region GrIS --group NORCE --model CISM16x-MAR312-p50 \
+conda run -n scalars python3 python/scalars.py --region AIS
+conda run -n scalars python3 python/scalars.py --region GrIS
+conda run -n scalars python3 python/scalars.py --region AIS --basins          # add per-basin output
+conda run -n scalars python3 python/scalars.py --region AIS --basins --no-mm  # basins only, skip whole-sheet
+conda run -n scalars python3 python/scalars.py --region GrIS --group NORCE --model CISM16x-MAR312-p50 \
   --modelid m001 --esm CESM2-WACCM --forcingid f001 --experiment ssp585 --configid E001 \
-  --exp-group ESM
+  --exp-group ESM  # explicit non-default submission example
 ```
 
 Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid`, `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
@@ -148,7 +148,7 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
-Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `outpath`). Resolution is auto-detected — no `res` override needed.
+Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `outpath`). Resolution is auto-detected.
 
 ### Model density parameters
 
@@ -170,10 +170,10 @@ The MINI suite provides lightweight test cases on a coarse 11×11 grid (600 km p
 cd manual-tests/MINI
 
 # Run a single case
-conda run -n nc python3 scalars_MINI.py --model MINI1 --exp exp0
+conda run -n scalars python3 scalars_MINI.py --model MINI1 --exp exp0
 
 # Run all combinations (MINI0/MINI1 × exp0/expg) and print summary
-conda run -n nc python3 run_MINI.py
+conda run -n scalars python3 run_MINI.py
 ```
 
 Experiment generation and grid remapping tools live in `manual-tests/MINI/setup/`.
@@ -209,7 +209,7 @@ The `tests/` directory contains a `pytest` suite that runs on every push via CI.
 It requires only `pytest` in addition to the standard conda environment:
 
 ```bash
-conda run -n nc pytest tests/ -v
+conda run -n scalars pytest tests/ -v
 ```
 
 This runs:
@@ -221,14 +221,13 @@ This runs:
 
 ### Manual integration tests
 
-These require model output under `Data/` and `Models/` (defaults use the VUW/PISM1
-AIS reference run):
+These require model output under `Data/` and `Models/` (defaults use the ISMIP7/SYNTH1 test case):
 
 ```bash
 cd manual-tests
-conda run -n nc python3 test_histout.py --datapath ../Data/AIS --modelpath ../Models/AIS
-conda run -n nc python3 test_refyear.py --datapath ../Data/AIS --modelpath ../Models/AIS
-conda run -n nc python3 test_basins.py \
+conda run -n scalars python3 test_histout.py --datapath ../Data/AIS --modelpath ../Models/AIS
+conda run -n scalars python3 test_refyear.py --datapath ../Data/AIS --modelpath ../Models/AIS
+conda run -n scalars python3 test_basins.py \
     --datapath-ais ../Data/AIS --datapath-gris ../Data/GrIS
 ```
 
@@ -239,10 +238,10 @@ conda run -n nc python3 test_basins.py \
 Run each implementation into a separate output tree, then compare:
 
 ```bash
-conda run -n nc python3 python/scalars.py --region AIS --outpath Output-py
+conda run -n scalars python3 python/scalars.py --region AIS --outpath Output-py
 # (MATLAB): outpath='../Output-mat'; run('scalars.m')
 cd manual-tests
-conda run -n nc python3 compare_outputs.py --region AIS \
+conda run -n scalars python3 compare_outputs.py --region AIS \
     --py-outpath ../Output-py/nc --mat-outpath ../Output-mat/nc
 ```
 
@@ -257,4 +256,18 @@ Converted files can be validated with the [ISM_SimulationChecker](https://github
 ```bash
 cd ISM_SimulationChecker
 python compliance_checker.py --source-path ../ismip7-scalar-processing/Models/GrIS/NORCE/CISM16x-MAR312-p50/ESM --variable-list ismip7_xyt
+```
+
+### Generating SYNTH1 test files
+
+The ISM_SimulationChecker includes a `generate_test_files.py` script that creates synthetic model output for testing. The commands below produce the ISMIP7/SYNTH1 files that the scalar processing scripts expect by default (output assumed to land under `Models/`):
+
+```bash
+# AIS — one historical timestep + full ssp585 projection
+python generate/generate_test_files.py --grid AIS_16000m --scenario historical --xyt --nyears 1   --start-year 2014
+python generate/generate_test_files.py --grid AIS_16000m --scenario ssp585    --xyt --nyears 286  --start-year 2015
+
+# GrIS — 55-year historical run + ctrl projection
+python generate/generate_test_files.py --grid GrIS_16000m --scenario historical --xyt --nyears 55  --start-year 1960
+python generate/generate_test_files.py --grid GrIS_16000m --scenario ctrl       --xyt --nyears 286 --start-year 2015
 ```

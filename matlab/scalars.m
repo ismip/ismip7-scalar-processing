@@ -5,7 +5,7 @@ addpath('/nird/services/software/betzy/sw_rl9/software/MATLAB/2024a/toolbox/matl
 
 % User settings — set any of these in the workspace before run() to override defaults
 if ~exist('region',        'var'), region        = 'AIS';       end
-if ~exist('hist',          'var'), hist          = 'historical'; end
+% hist default is region-specific; set below after the switch
 if ~exist('refyear',       'var'), refyear       = [];           end  % [] = last timestep of hist
 if ~exist('outpath',       'var'), outpath       = '../Output';  end
 if ~exist('histout',       'var'), histout       = -1;           end  % -1 = all hist timesteps
@@ -15,13 +15,13 @@ if ~exist('flg_bm',        'var'), flg_bm        = false;        end  % IMBIE3 b
 % Region-specific defaults
 switch region
     case 'AIS'
-        def_group     = 'VUW';   def_model = 'PISM1';             def_exp = 'ssp585';
-        def_modelid   = 'm001';  def_esm   = 'CESM2';
-        def_forcingid = 'f001';  def_configid = 'E001';           def_exp_group = 'ESM';
+        def_group     = 'ISMIP7'; def_model = 'SYNTH1';  def_exp = 'ssp585'; def_hist = 'historical';
+        def_modelid   = 'm001';   def_esm   = 'CESM2-WACCM';
+        def_forcingid = 'f001';   def_configid = 'C001'; def_exp_group = 'CORE';
     case 'GrIS'
-        def_group     = 'NORCE'; def_model = 'CISM16x-MAR312-p50'; def_exp = 'ssp585';
-        def_modelid   = 'm001';  def_esm   = 'CESM2-WACCM';
-        def_forcingid = 'f001';  def_configid = 'E001';            def_exp_group = 'ESM';
+        def_group     = 'ISMIP7'; def_model = 'SYNTH1';  def_exp = 'ctrl'; def_hist = 'historical';
+        def_modelid   = 'm001';   def_esm   = 'CESM2-WACCM';
+        def_forcingid = 'f001';   def_configid = 'C001'; def_exp_group = 'CORE';
     otherwise
         error('Unknown region: %s. Choose AIS or GrIS.', region);
 end
@@ -33,6 +33,7 @@ if ~exist('esm',           'var') || isempty(esm),           esm           = def
 if ~exist('forcingid',     'var') || isempty(forcingid),     forcingid     = def_forcingid;            end
 if ~exist('configid',      'var') || isempty(configid),      configid      = def_configid;             end
 if ~exist('exp_group',     'var') || isempty(exp_group),     exp_group     = def_exp_group;            end
+if ~exist('hist',          'var') || isempty(hist),          hist          = def_hist;                  end
 if ~exist('hist_exp_group','var') || isempty(hist_exp_group),hist_exp_group = exp_group;               end
 if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
 if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
