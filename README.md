@@ -29,6 +29,8 @@ ismip7-scalar-processing/                        # repository root
 ├── tools/                                       # shared helper scripts
 │   ├── set_params.sh                            # generate params.nc for a model
 │   └── params_template.nc                       # template for model-specific densities
+├── conventions/
+│   └── ISMIP7_experiments_CORE.csv              # CORE configid → scenario/ESM mapping (reference)
 ├── Data/                                        # default location for masks and area factors
 │   ├── AIS/
 │   ├── GrIS/
