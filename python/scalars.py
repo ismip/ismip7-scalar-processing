@@ -636,7 +636,7 @@ for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
 
     # Load exp FL data + time axis
     idat = nc.Dataset(fl_exp_file, 'r')
-    fl_exp = idat.variables[input_var][:,:,:]
+    fl_exp = np.ma.filled(idat.variables[input_var][:,:,:], 0.0)
     fl_tv  = idat.variables['time']
     fl_time_exp       = fl_tv[:]
     fl_time_units     = fl_tv.units
@@ -650,7 +650,7 @@ for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
         try:
             fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, hist_configid)
             idat = nc.Dataset(fl_hist_file, 'r')
-            fl_hist      = idat.variables[input_var][:,:,:]
+            fl_hist      = np.ma.filled(idat.variables[input_var][:,:,:], 0.0)
             fl_time_hist = idat.variables['time'][:]
             idat.close()
         except FileNotFoundError:
