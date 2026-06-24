@@ -614,6 +614,7 @@ for ifl = 1:size(fl_scalar_specs, 1)
 
     % Load exp FL data + time axis
     fl_exp      = double(ncread(fl_exp_file, input_var));  % (nx, ny, nt_fl)
+    fl_exp(isnan(fl_exp)) = 0;
     fl_tv_info  = ncinfo(fl_exp_file, 'time');
     fl_time_exp = double(ncread(fl_exp_file, 'time'));
     fl_time_units     = '';
@@ -634,6 +635,7 @@ for ifl = 1:size(fl_scalar_specs, 1)
         try
             fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, hist_configid);
             fl_hist      = double(ncread(fl_hist_file, input_var));
+            fl_hist(isnan(fl_hist)) = 0;
             fl_time_hist = double(ncread(fl_hist_file, 'time'));
         catch
             % hist FL file missing; output exp period only
