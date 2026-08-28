@@ -7,14 +7,14 @@ Two implementations are provided: **Python** (primary) and **MATLAB**. Conversio
 ## Requirements
 
 ```bash
-conda create -n scalars
-conda activate scalars
+conda create -n nc
+conda activate nc
 conda install -c conda-forge cdo=2.4.4 nco netCDF4 scipy pytest
 ```
 
 ## Input data
 
-In addition to model output, the scripts require masks and area factors available on the ISMIP Globus server under `Output-Processing`. Model-specific density parameters (`rhoi`, `rhow`, `rhof`) are read from a `params.nc` file in the model directory.
+In addition to model output, the scripts require masks and area factors available on the ISMIP Globus server under `Output-Processing`. Model-specific density parameters (`rhoi`, `rhow`, `rhof`) are read from a `params.nc` file under `{group}/{model}/` in the model tree (or a separate `--params-path` root).
 
 ## Directory structure
 
@@ -24,13 +24,14 @@ By default, `Data/` and `Models/` are expected at the repository root. Any locat
 ismip7-scalar-processing/                        # repository root
 ├── python/
 │   ├── scalars.py                               # AIS + GrIS (--region flag)
+│   ├── process_ensemble.py                      # batch-run scalars.py over a submissions tree
 │   └── slc/                                     # shared SLC computation package
 ├── matlab/scalars.m                             # AIS + GrIS (region variable, mirrors python/)
 ├── tools/                                       # shared helper scripts
 │   ├── set_params.sh                            # generate params.nc for a model
 │   └── params_template.nc                       # template for model-specific densities
 ├── conventions/
-│   └── ISMIP7_experiments_CORE.csv              # CORE configid → scenario/ESM mapping (reference)
+│   └── ISMIP7_experiments_CORE.csv              # CORE configid → scenario/ESM (used by process_ensemble.py)
 ├── Data/                                        # default location for masks and area factors
 │   ├── AIS/
 │   ├── GrIS/
@@ -40,9 +41,10 @@ ismip7-scalar-processing/                        # repository root
 │   ├── AIS/{group}/{model}/{exp_group}/{configid}/
 │   ├── GrIS/{group}/{model}/{exp_group}/{configid}/
 │   └── MINI/ISMIP7/{MINI0,MINI1}/{exp}/
-├── Output/
-│   ├── nc/                                      # NetCDF output (gitignored)
-│   └── csv/                                     # CSV output (gitignored)
+├── Output/                                     # gitignored
+│   ├── nc/{region}/{group}/{model}/{exp_group}/{configid}/   # NetCDF output (mirrors Models/)
+│   ├── csv/                                     # CSV output (flat)
+│   └── logs/                                    # process_ensemble.py per-unit logs + run summary
 ├── tests/
 │   ├── test_slc_units.py                        # pytest: slc/ physics unit tests (no ext data)
 │   └── test_mini_smoke.py                       # pytest: MINI end-to-end smoke tests
@@ -96,17 +98,17 @@ Files are stored under `Models/{region}/{group}/{model}/{exp_group}/{configid}/`
 
 ## Running the scripts
 
-All scripts accept CLI arguments; the default settings match the ISMIP7/SYNTH1 synthetic test configurations produced by the ISM_SimulationChecker (`--group ISMIP7 --model SYNTH1 --exp-group CORE --esm CESM2-WACCM --configid C001 --experiment ctrl --hist ctrl` for both regions). Resolution is auto-detected from the model grid.
+All scripts accept CLI arguments; the default settings match the ISMIP7/SYNTH1 synthetic test configurations produced by the ISM_SimulationChecker: `--group ISMIP7 --model SYNTH1 --modelid m001 --esm CESM2-WACCM --forcingid f001 --exp-group CORE --configid C001 --hist historical` for both regions, with `--experiment ssp585` for AIS and `--experiment ctrl` for GrIS. Resolution is auto-detected from the model grid.
 
 ### Python (primary)
 
 ```bash
 # Run from repo root
-conda run -n scalars python3 python/scalars.py --region AIS
-conda run -n scalars python3 python/scalars.py --region GrIS
-conda run -n scalars python3 python/scalars.py --region AIS --basins          # add per-basin output
-conda run -n scalars python3 python/scalars.py --region AIS --basins --no-mm  # basins only, skip whole-sheet
-conda run -n scalars python3 python/scalars.py --region GrIS --group NORCE --model CISM16x-MAR312-p50 \
+conda run -n nc python3 python/scalars.py --region AIS
+conda run -n nc python3 python/scalars.py --region GrIS
+conda run -n nc python3 python/scalars.py --region AIS --basins          # add per-basin output
+conda run -n nc python3 python/scalars.py --region AIS --basins --no-mm  # basins only, skip whole-sheet
+conda run -n nc python3 python/scalars.py --region GrIS --group NORCE --model CISM16x-MAR312-p50 \
   --modelid m001 --esm CESM2-WACCM --forcingid f001 --experiment ssp585 --configid E001 \
   --exp-group ESM  # explicit non-default submission example
 ```
@@ -121,42 +123,33 @@ If a required input file is not found (or does not follow the strict ISMIP7 nami
 
 `--hist-configid` is needed when the historical and projection experiments have different configids — the normal case for CORE runs, where e.g. C001 (historical) is the shared reference for C003, C005, and C007 (projections). Example:
 ```bash
-conda run -n scalars python3 python/scalars.py --region AIS \
+conda run -n nc python3 python/scalars.py --region AIS \
   --configid C007 --experiment ssp585 --hist historical --hist-configid C001 --exp-group CORE
 ```
 When omitted, `--hist-configid` defaults to the same value as `--configid`.
 
-Output is written to `Output/nc/` and `Output/csv/` at the repository root, regardless of which directory you invoke the script from.
+NetCDF output goes to a tree that mirrors the model layout,
+`Output/nc/{region}/{group}/{model}/{exp_group}/{configid}/`; CSV output stays flat in
+`Output/csv/`. Both are under the repository root regardless of which directory you invoke
+the script from. Override the root with `--outpath`.
 
 **SLC output** — always in two GIC variants (with and without). For whole-sheet output (default), the mask name is omitted from the filename; for basin output (`--basins`) it is included:
 
 ```
+NC=Output/nc/{region}/{group}/{model}/{exp_group}/{configid}
 # Whole ice sheet (default):
-Output/nc/slvaf-gic_{...}.nc    # with GIC masking (NC off by default; CSV always written)
-Output/nc/slvaf_{...}.nc        # without GIC masking
+$NC/slvaf-gic_{...}.nc          # with GIC masking (NC off by default; CSV always written)
+$NC/slvaf_{...}.nc              # without GIC masking
 Output/csv/slvaf-gic_{...}.csv
 Output/csv/slvaf_{...}.csv
 # Basin output (--basins):
-Output/nc/slvaf-gic_{mask}_{...}.nc
-Output/nc/slvaf_{mask}_{...}.nc
+$NC/slvaf-gic_{mask}_{...}.nc
+$NC/slvaf_{mask}_{...}.nc
 ```
 
 where `{...}` is `{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{exp}_{configid}_{y0}-{y1}`, and `{mask}` is a basin name (`wais`, `ce`, `no`, `r01`, …). The `-gic` suffix means glaciers and ice caps (GIC) are excluded from the integral. Each NetCDF contains `time` and the SLC variable (in metres). Each CSV has one data row with metadata columns (`ice_source`, `region`, `group`, `model`, `model_variant`, `scenario`, `GCM`, `forcingid`, `configid`) followed by annual columns `y1850`–`y2300` (NA outside the simulation period). The `region` column in the CSV holds the display name (`ais`/`gris` or basin name) with `-gic` suffix for the GIC variant.
 
-**Other scalar output** — one NetCDF per variable, no GIC masking. Mask name omitted for whole-sheet, included for basins:
-
-```
-Output/nc/lim_{...}.nc
-Output/nc/limnsw_{...}.nc
-Output/nc/iareagr_{...}.nc
-Output/nc/iareafl_{...}.nc
-Output/nc/tendacabf_{...}.nc
-Output/nc/tendlibmassbfgr_{...}.nc
-Output/nc/tendlibmassbffl_{...}.nc
-Output/nc/tendlicalvf_{...}.nc
-Output/nc/tendlifmassbf_{...}.nc
-Output/nc/tendligroundf_{...}.nc
-```
+**Other scalar output** — one NetCDF per variable in the same `$NC` directory, no GIC masking. Mask name omitted for whole-sheet, included for basins: `lim`, `limnsw`, `iareagr`, `iareafl` (ST scalars) and `tendacabf`, `tendlibmassbfgr`, `tendlibmassbffl`, `tendlicalvf`, `tendlifmassbf`, `tendligroundf` (FL scalars; each skipped with a warning if its input file is absent).
 
 ### MATLAB
 
@@ -166,7 +159,7 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
-Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `hist_configid`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `outpath`). Resolution is auto-detected.
+Set workspace variables before `run()` to override any default (`group`, `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`, `hist_exp_group`, `hist_configid`, `refyear`, `histout`, `flg_mm`, `flg_bm`, `datapath`, `modelpath`, `params_path`, `outpath`). Resolution is auto-detected. `exp_group` and `params_path` behave as their Python `--exp-group` / `--params-path` counterparts; unlike Python, MATLAB raises on a missing input rather than skipping.
 
 ### Model density parameters
 
@@ -191,7 +184,7 @@ The script resolves paths from its own location and works correctly when invoked
 `python/process_ensemble.py` runs `scalars.py` once per `{group}/{model}/{exp_group}/{configid}` unit found under a submissions root. Point `--modelpath` at the region directory of the NIRD submissions tree (note the doubled region in the path):
 
 ```bash
-conda run -n scalars python3 python/process_ensemble.py --region GrIS \
+conda run -n nc python3 python/process_ensemble.py --region GrIS \
   --modelpath /nird/datalake/NS5011K/ISMIP/ISMIP7/GrIS/ISMIP7_output/ISMIP7_submissions/GrIS \
   --params-path /nird/datalake/NS5011K/ISMIP/ISMIP7/Output-Processing/Models/GrIS \
   --dry-run                       # print the planned per-unit commands, run nothing
@@ -207,10 +200,10 @@ The MINI suite provides lightweight test cases on a coarse 11×11 grid (600 km p
 cd manual-tests/MINI
 
 # Run a single case
-conda run -n scalars python3 scalars_MINI.py --model MINI1 --exp exp0
+conda run -n nc python3 scalars_MINI.py --model MINI1 --exp exp0
 
 # Run all combinations (MINI0/MINI1 × exp0/expg) and print summary
-conda run -n scalars python3 run_MINI.py
+conda run -n nc python3 run_MINI.py
 ```
 
 Experiment generation and grid remapping tools live in `manual-tests/MINI/setup/`.
@@ -246,7 +239,7 @@ The `tests/` directory contains a `pytest` suite that runs on every push via CI.
 It requires only `pytest` in addition to the standard conda environment:
 
 ```bash
-conda run -n scalars pytest tests/ -v
+conda run -n nc pytest tests/ -v
 ```
 
 This runs:
@@ -262,9 +255,9 @@ These require model output under `Data/` and `Models/` (defaults use the ISMIP7/
 
 ```bash
 cd manual-tests
-conda run -n scalars python3 test_histout.py --datapath ../Data/AIS --modelpath ../Models/AIS
-conda run -n scalars python3 test_refyear.py --datapath ../Data/AIS --modelpath ../Models/AIS
-conda run -n scalars python3 test_basins.py \
+conda run -n nc python3 test_histout.py --datapath ../Data/AIS --modelpath ../Models/AIS
+conda run -n nc python3 test_refyear.py --datapath ../Data/AIS --modelpath ../Models/AIS
+conda run -n nc python3 test_basins.py \
     --datapath-ais ../Data/AIS --datapath-gris ../Data/GrIS
 ```
 
@@ -275,14 +268,14 @@ conda run -n scalars python3 test_basins.py \
 Run each implementation into a separate output tree, then compare:
 
 ```bash
-conda run -n scalars python3 python/scalars.py --region AIS --outpath Output-py
+conda run -n nc python3 python/scalars.py --region AIS --outpath Output-py
 # (MATLAB): outpath='../Output-mat'; run('scalars.m')
 cd manual-tests
-conda run -n scalars python3 compare_outputs.py --region AIS \
+conda run -n nc python3 compare_outputs.py --region AIS \
     --py-outpath ../Output-py/nc --mat-outpath ../Output-mat/nc
 ```
 
-The comparison script discovers all Python NC files and matches them against MATLAB output by filename. It covers all output variables — SLC methods (slvaf, slg20, sla20), ST scalars (lim, limnsw, iareagr, iareafl), and FL scalars (tendacabf, …, tendligroundf). SLC variables are checked against an absolute tolerance of 1 × 10⁻¹⁰ m; all others against a relative tolerance of 1 × 10⁻¹⁰. Verified differences are at machine-epsilon level (~10⁻¹⁵ relative) for all variables.
+The comparison script discovers Python NC files recursively (covering the nested output tree) and matches each against the MATLAB file at the same relative sub-path, with a recursive basename fallback. It covers all output variables — SLC methods (slvaf, slg20, sla20), ST scalars (lim, limnsw, iareagr, iareafl), and FL scalars (tendacabf, …, tendligroundf). SLC variables are checked against an absolute tolerance of 1 × 10⁻¹⁰ m; all others against a relative tolerance of 1 × 10⁻¹⁰. Verified differences are at machine-epsilon level (~10⁻¹⁵ relative) for all variables, most recently against `Submission_Tests_v1` AIS VUW/PISM1 and GrIS NORCE/CISM16x-MAR312-p50 on NIRD.
 
 ### Generating SYNTH1 test files
 
