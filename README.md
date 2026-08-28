@@ -111,7 +111,13 @@ conda run -n scalars python3 python/scalars.py --region GrIS --group NORCE --mod
   --exp-group ESM  # explicit non-default submission example
 ```
 
-Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid` (alias `--ism-member-id`), `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--hist-configid`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--outpath`.
+Key arguments: `--region {AIS,GrIS}` (required), `--group`, `--model`, `--experiment`, `--modelid` (alias `--ism-member-id`), `--esm`, `--forcingid`, `--configid`, `--exp-group`, `--hist`, `--hist-exp-group`, `--hist-configid`, `--refyear`, `--histout` (default `-1` = all hist), `--basins`, `--no-mm`, `--datapath`, `--modelpath`, `--params-path`, `--outpath`.
+
+`--exp-group` is the single source of truth for the `{exp_group}` directory level (input **and** output); when omitted it defaults from the `--configid` prefix (`C`→`CORE`, `E`→`ESM`, `P`→`PPE`).
+
+`--params-path` sets the root for the `params.nc` lookup — `<params-path>/<group>/<model>/params.nc` — and defaults to `--modelpath`. Use it when the model tree is read-only (e.g. the NIRD submissions tree) and densities live elsewhere.
+
+If a required input file is not found (or does not follow the strict ISMIP7 naming rules), the run prints a single `SKIP: …` line and exits 2 instead of raising — so a batch can log it and move on. A missing `sftgrf`/`sftflf` only skips the ST scalars; SLC and FL are still written.
 
 `--hist-configid` is needed when the historical and projection experiments have different configids — the normal case for CORE runs, where e.g. C001 (historical) is the shared reference for C003, C005, and C007 (projections). Example:
 ```bash
@@ -178,7 +184,20 @@ bash tools/set_params.sh AIS ISMIP7 SYNTH1 \
     --modelpath /path/to/external/Models/AIS
 ```
 
-The script resolves paths from its own location and works correctly when invoked from any directory. `--modelpath` overrides the default `Models/<region>` at the repo root.
+The script resolves paths from its own location and works correctly when invoked from any directory. `--modelpath` overrides the default `Models/<region>` at the repo root. Point `--params-path` at the same root you pass to `set_params.sh --modelpath` when the model output itself is read-only.
+
+## Processing a submission ensemble
+
+`python/process_ensemble.py` runs `scalars.py` once per `{group}/{model}/{exp_group}/{configid}` unit found under a submissions root. Point `--modelpath` at the region directory of the NIRD submissions tree (note the doubled region in the path):
+
+```bash
+conda run -n scalars python3 python/process_ensemble.py --region GrIS \
+  --modelpath /nird/datalake/NS5011K/ISMIP/ISMIP7/GrIS/ISMIP7_output/ISMIP7_submissions/GrIS \
+  --params-path /nird/datalake/NS5011K/ISMIP/ISMIP7/Output-Processing/Models/GrIS \
+  --dry-run                       # print the planned per-unit commands, run nothing
+```
+
+Each projection is auto-paired to its historical configid via `conventions/ISMIP7_experiments_CORE.csv` (matched by ESM: CESM→`C001`, MRI→`C002`); `historical`/`ctrl` configids run self-paired. A unit is processed only if its directory is `{CORE|ESM|PPE}/{[CEP]NNN}` **and** the `lithk` filename's `region`/`group`/`model`/`configid` fields match that directory — ad-hoc directories (`old_CORE`, `CORE_old`, …) and files that break the strict naming rules are logged and skipped. Filters: `--exp-group`, `--groups`, `--models`, `--configids` (comma-separated). Per-unit logs and a run summary are written to `Output/logs/`. The driver always exits 0 unless it hits a driver-level error.
 
 ## MINI test suite
 

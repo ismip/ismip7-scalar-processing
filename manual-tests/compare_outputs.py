@@ -33,8 +33,10 @@ REL_TOL  = 1e-10   # applied to all other variables (relative to data max)
 py_dir  = args.py_outpath
 mat_dir = args.mat_outpath
 
-# Discover all Python NC files (skip GIC NC files — Python doesn't write them by default)
-py_files = sorted(glob.glob(os.path.join(py_dir, '*.nc')))
+# Discover all Python NC files (skip GIC NC files — Python doesn't write them by default).
+# Search recursively so the {region}/{group}/{model}/{exp_group}/{configid}/ output tree
+# is covered; fall back to the flat layout too.
+py_files = sorted(set(glob.glob(os.path.join(py_dir, '**', '*.nc'), recursive=True)))
 if args.region:
     py_files = [f for f in py_files if f'_{args.region}_' in os.path.basename(f)]
 if not py_files:
@@ -59,9 +61,16 @@ for py_path in py_files:
         varname = basename[:basename.index('_')]
     stem = basename[len(varname) + 1:]     # AIS_ISMIP7_..._2014-2300.nc
 
-    mat_path = os.path.join(mat_dir, basename)
+    # Match the MATLAB file by the same sub-path relative to its output root, so
+    # separate --py-outpath / --mat-outpath nested trees line up; fall back to a
+    # basename search (covers the flat layout and mixed trees).
+    rel = os.path.relpath(py_path, py_dir)
+    mat_path = os.path.join(mat_dir, rel)
     if not os.path.exists(mat_path):
-        print(f'MISSING MATLAB: {basename}')
+        cand = glob.glob(os.path.join(mat_dir, '**', basename), recursive=True)
+        mat_path = cand[0] if cand else mat_path
+    if not os.path.exists(mat_path):
+        print(f'MISSING MATLAB: {rel}')
         fail = True
         continue
 
