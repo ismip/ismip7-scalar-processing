@@ -60,6 +60,7 @@ parser.add_argument("--hist-configid",  default=None,                   help="Co
 parser.add_argument("--refyear",        type=int, default=None,         help="Year to use as SLC reference (default: last timestep of hist experiment)")
 parser.add_argument("--datapath",       default=None,                   help="Path to generic data files (default: ../Data/<region>)")
 parser.add_argument("--modelpath",      default=None,                   help="Path to model output (default: ../Models/<region>)")
+parser.add_argument("--params-path",    default=None,                   help="Root for params.nc: <params-path>/<group>/<model>/params.nc (default: same as --modelpath)")
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 _default_outpath = os.path.join(_script_dir, "..", "Output")
 parser.add_argument("--outpath",        default=_default_outpath,       help="Root path for output (nc/ and csv/ created as subdirectories)")
@@ -71,6 +72,10 @@ parser.add_argument("--no-mm",          action="store_true",
                                                     help="Skip whole-ice-sheet (mm) integral (use with --basins to get basins only)")
 args = parser.parse_args()
 
+def configid_to_exp_group(cid):
+    """Default exp_group directory from the configid prefix (C→CORE, E→ESM, P→PPE)."""
+    return {"C": "CORE", "E": "ESM", "P": "PPE"}.get(cid[0].upper(), "CORE")
+
 region    = args.region
 group     = args.group      or DEFAULTS[region]["group"]
 model     = args.model      or DEFAULTS[region]["model"]
@@ -79,24 +84,35 @@ modelid   = args.modelid    or DEFAULTS[region]["modelid"]
 esm       = args.esm        or DEFAULTS[region]["esm"]
 forcingid = args.forcingid  or DEFAULTS[region]["forcingid"]
 configid  = args.configid   or DEFAULTS[region]["configid"]
-exp_group = args.exp_group  or DEFAULTS[region]["exp_group"]
+exp_group = args.exp_group  or configid_to_exp_group(configid)
 hist      = args.hist or DEFAULTS[region].get("hist", "historical")
 hist_exp_group  = args.hist_exp_group  or exp_group
 hist_configid   = args.hist_configid   or configid
 datapath  = args.datapath  if args.datapath  else os.path.join(_script_dir, "..", "Data",   region)
 modelpath = args.modelpath if args.modelpath else os.path.join(_script_dir, "..", "Models", region)
+params_path = args.params_path if args.params_path else modelpath
 
 outpath   = args.outpath
-ncpath    = os.path.join(outpath, "nc")
+ncpath    = os.path.join(outpath, "nc", region, group, model, exp_group, configid)
 csvpath   = os.path.join(outpath, "csv")
 histout   = args.histout
 
 
-def find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid, experiment, configid):
+def skip_run(reason):
+    """Log one machine-readable SKIP line and exit 2 (distinct from an uncaught crash=1)."""
+    print(f"SKIP: {region} {group}/{model}/{exp_group}/{configid} — {reason}")
+    sys.exit(2)
+
+
+def find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid, experiment, configid,
+                    required=True):
     pattern = os.path.join(dirpath,
         f"{var}_{region}_{group}_{model}_{modelid}_{esm}_{forcingid}_{experiment}_{configid}_*.nc")
     files = glob.glob(pattern)
     if len(files) == 0:
+        if not required:
+            print(f"WARNING: no file for {var}\n  {pattern}")
+            return None
         raise FileNotFoundError(f"No file found:\n  {pattern}")
     if len(files) > 1:
         raise ValueError(f"Multiple files match for {var} — cannot disambiguate:\n  " + "\n  ".join(files))
@@ -124,7 +140,11 @@ def make_out_stem(varname, suffix, regionName_raw, regionName, base_stem):
         return f"{varname}{suffix}_{base_stem}"
     return f"{varname}{suffix}_{regionName}_{base_stem}"
 
-res = detect_res(modelpath, region, group, model, modelid, esm, forcingid, exp, configid, exp_group)
+try:
+    res = detect_res(modelpath, region, group, model, modelid, esm, forcingid, exp, configid, exp_group)
+except FileNotFoundError:
+    skip_run(f"missing lithk for exp in "
+             f"{os.path.join(modelpath, group, model, exp_group, configid)}")
 print(f"Auto-detected resolution: {res} km")
 
 ## What output to produce
@@ -242,7 +262,10 @@ idat.close()
 # Main experiment
 exppath = modelpath + "/" + group + "/" + model + "/" + exp_group + "/" + configid
 # Model geometry
-idat = nc.Dataset(find_model_file(exppath, "lithk", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
+_f = find_model_file(exppath, "lithk", region, group, model, modelid, esm, forcingid, exp, configid, required=False)
+if _f is None:
+    skip_run(f"missing lithk for exp in {exppath}")
+idat = nc.Dataset(_f, 'r')
 lithk = idat.variables["lithk"][:,:,:]
 # Pick up time axis
 time_model     = idat.variables["time"][:]
@@ -250,14 +273,20 @@ time_units     = idat.variables["time"].units
 time_long_name = idat.variables["time"].long_name
 time_calendar  = idat.variables["time"].calendar
 idat.close()
-idat = nc.Dataset(find_model_file(exppath, "topg", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
+_f = find_model_file(exppath, "topg", region, group, model, modelid, esm, forcingid, exp, configid, required=False)
+if _f is None:
+    skip_run(f"missing topg for exp in {exppath}")
+idat = nc.Dataset(_f, 'r')
 topg = idat.variables["topg"][:,:,:]
 idat.close()
 
 # Historical experiment
 histpath = modelpath + "/" + group + "/" + model + "/" + hist_exp_group + "/" + hist_configid
 # Model geometry
-idat = nc.Dataset(find_model_file(histpath, "lithk", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
+_f = find_model_file(histpath, "lithk", region, group, model, modelid, esm, forcingid, hist, hist_configid, required=False)
+if _f is None:
+    skip_run(f"missing lithk for hist in {histpath}")
+idat = nc.Dataset(_f, 'r')
 time_ref_var = idat.variables["time"]
 n_hist = len(time_ref_var)
 time_hist = time_ref_var[:]
@@ -295,7 +324,10 @@ need_hist_arrays = need_hist or (hist_n_out > 0)
 if need_hist_arrays:
     lithk_hist = idat.variables["lithk"][:,:,:]
 idat.close()
-idat = nc.Dataset(find_model_file(histpath, "topg", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
+_f = find_model_file(histpath, "topg", region, group, model, modelid, esm, forcingid, hist, hist_configid, required=False)
+if _f is None:
+    skip_run(f"missing topg for hist in {histpath}")
+idat = nc.Dataset(_f, 'r')
 topg_ref = idat.variables["topg"][ref_idx,:,:]
 if need_hist_arrays:
     topg_hist = idat.variables["topg"][:,:,:]
@@ -319,13 +351,10 @@ if ref_in_exp:
     topg_ref  = topg[ref_idx_exp,:,:]
 
 # Add model params
-params_file = modelpath + "/" + group + "/" + model + "/params.nc"
+params_file = params_path + "/" + group + "/" + model + "/params.nc"
 if not os.path.exists(params_file):
-    raise FileNotFoundError(
-        f"Missing params.nc for {group}/{model}.\n"
-        f"  Expected: {params_file}\n"
-        f"  Generate it with: bash tools/set_params.sh"
-    )
+    skip_run(f"missing params.nc — expected {params_file} "
+             f"(generate with tools/set_params.sh, or point --params-path at its root)")
 idat = nc.Dataset(params_file, 'r')
 scalar = idat.variables["rhoi"]; rhoi = scalar[()]
 scalar = idat.variables["rhow"]; rhow = scalar[()]
@@ -337,27 +366,34 @@ c.RHOSW = rhow  # kg/m3
 c.RHOFW = rhof  # kg/m3
 c.AO    = oarea  # m2
 
-# Model masks
-idat = nc.Dataset(find_model_file(exppath, "sftgif", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
-sftgif = idat.variables["sftgif"][:,:,:]
-idat.close()
-idat = nc.Dataset(find_model_file(exppath, "sftgrf", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
-sftgrf = idat.variables["sftgrf"][:,:,:]
-idat.close()
-idat = nc.Dataset(find_model_file(exppath, "sftflf", region, group, model, modelid, esm, forcingid, exp, configid), 'r')
-sftflf = idat.variables["sftflf"][:,:,:]
-idat.close()
+# Model masks — only needed for the ST-scalar block (iareagr/iareafl). SLC and FL
+# do not use these, so a missing sft* file skips ST but keeps the rest of the run.
+def _load_field(dirpath, var, experiment_, cid):
+    f = find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid,
+                        experiment_, cid, required=False)
+    if f is None:
+        return None
+    d = nc.Dataset(f, 'r')
+    a = d.variables[var][:,:,:]
+    d.close()
+    return a
+
+sftgif = _load_field(exppath, "sftgif", exp, configid)
+sftgrf = _load_field(exppath, "sftgrf", exp, configid)
+sftflf = _load_field(exppath, "sftflf", exp, configid)
+st_ok = sftgrf is not None and sftflf is not None
+if not st_ok:
+    print("WARNING: sftgrf/sftflf missing — skipping ST scalars (lim, limnsw, iareagr, iareafl)")
 
 # Load hist mask fields needed for ST scalars (iareagr, iareafl)
 sftgrf_hist = sftgrf
 sftflf_hist = sftflf
-if hist_n_out > 0 and exp != hist:
-    idat = nc.Dataset(find_model_file(histpath, "sftgrf", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
-    sftgrf_hist = idat.variables["sftgrf"][:,:,:]
-    idat.close()
-    idat = nc.Dataset(find_model_file(histpath, "sftflf", region, group, model, modelid, esm, forcingid, hist, hist_configid), 'r')
-    sftflf_hist = idat.variables["sftflf"][:,:,:]
-    idat.close()
+if st_ok and hist_n_out > 0 and exp != hist:
+    sftgrf_hist = _load_field(histpath, "sftgrf", hist, hist_configid)
+    sftflf_hist = _load_field(histpath, "sftflf", hist, hist_configid)
+    if sftgrf_hist is None or sftflf_hist is None:
+        st_ok = False
+        print("WARNING: hist sftgrf/sftflf missing — skipping ST scalars")
 
 #######################################
 # See what we have
@@ -373,9 +409,10 @@ if verbose:
     print("lithk:", lithk.shape)
     print("topg:", topg.shape)
     print(rhoi, rhow, rhof)
-    print("sftgif:", sftgif.shape)
-    print("sftgrf:", sftgrf.shape)
-    print("sftflf:", sftflf.shape)
+    if st_ok:
+        print("sftgif:", None if sftgif is None else sftgif.shape)
+        print("sftgrf:", sftgrf.shape)
+        print("sftflf:", sftflf.shape)
 
 FL_SCALAR_SPECS = [
     ("tendacabf",       "acabf",       "tendency_of_land_ice_mass_due_to_surface_mass_balance",        "kg s-1"),
@@ -564,8 +601,9 @@ for gic_mask, gic_suffix in [(iaf2GIC, '-gic'), (np.ones_like(iaf2GIC), '')]:
 
 #############################################################
 # ST scalar variables (no GIC masking, plain display name)
+# Skipped entirely when sftgrf/sftflf were unavailable (st_ok is False).
 
-for regionName_raw, region_mask in vars(regions).items():
+for regionName_raw, region_mask in (vars(regions).items() if st_ok else []):
     regionName = region_display_name(regionName_raw, region)
 
     A = region_mask * af2 * (float(res)*1000.0)**2
@@ -628,9 +666,8 @@ for regionName_raw, region_mask in vars(regions).items():
 
 for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
     # Find exp FL file; skip variable if not found
-    try:
-        fl_exp_file = find_model_file(exppath, input_var, region, group, model, modelid, esm, forcingid, exp, configid)
-    except FileNotFoundError:
+    fl_exp_file = find_model_file(exppath, input_var, region, group, model, modelid, esm, forcingid, exp, configid, required=False)
+    if fl_exp_file is None:
         skipped_scalars.append(tendvarname)
         continue
 
@@ -647,14 +684,12 @@ for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
     # Optionally load hist FL data for histout prepending
     fl_hist, fl_time_hist = None, None
     if hist_n_out > 0 and exp != hist:
-        try:
-            fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, hist_configid)
+        fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, hist_configid, required=False)
+        if fl_hist_file is not None:  # hist FL file missing → output exp period only
             idat = nc.Dataset(fl_hist_file, 'r')
             fl_hist      = np.ma.filled(idat.variables[input_var][:,:,:], 0.0)
             fl_time_hist = idat.variables['time'][:]
             idat.close()
-        except FileNotFoundError:
-            pass  # hist FL file missing; output exp period only
 
     # Build concatenated FL time axis (same histout logic as ST)
     n_fl_hist = len(fl_time_hist) if fl_time_hist is not None else 0

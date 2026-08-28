@@ -32,12 +32,13 @@ if ~exist('modelid',       'var') || isempty(modelid),       modelid       = def
 if ~exist('esm',           'var') || isempty(esm),           esm           = def_esm;                  end
 if ~exist('forcingid',     'var') || isempty(forcingid),     forcingid     = def_forcingid;            end
 if ~exist('configid',      'var') || isempty(configid),      configid      = def_configid;             end
-if ~exist('exp_group',     'var') || isempty(exp_group),     exp_group     = def_exp_group;            end
+if ~exist('exp_group',     'var') || isempty(exp_group),     exp_group     = configid_to_exp_group(configid); end
 if ~exist('hist',          'var') || isempty(hist),          hist          = def_hist;                  end
 if ~exist('hist_exp_group','var') || isempty(hist_exp_group),hist_exp_group = exp_group;               end
 if ~exist('hist_configid', 'var') || isempty(hist_configid), hist_configid  = configid;                end
 if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
 if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
+if ~exist('params_path',   'var') || isempty(params_path),   params_path   = modelpath;                end
 
 % Description for netcdf global attribute
 file_description = 'ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no';
@@ -72,7 +73,7 @@ switch region
         basininput = [datapath '/basins_GrIS_Mouginot_extended_'      res '000m_v1.nc'];
         gicinput   = [datapath '/iaf2_GIC_GrIS_'                      res '000m_v0.nc'];
 end
-ncpath  = fullfile(outpath, 'nc');
+ncpath  = fullfile(outpath, 'nc', region, group, model, exp_group, configid);
 csvpath = fullfile(outpath, 'csv');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -219,7 +220,7 @@ if ref_in_exp
 end
 
 % Model density parameters
-params_file = [modelpath '/' group '/' model '/params.nc'];
+params_file = [params_path '/' group '/' model '/params.nc'];
 if ~isfile(params_file)
     error('Missing params.nc for %s/%s.\n  Expected: %s\n  Generate it with: bash tools/set_params.sh', ...
           group, model, params_file);
@@ -756,6 +757,17 @@ end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Local functions — file discovery
+
+function eg = configid_to_exp_group(cid)
+% Default exp_group directory from the configid prefix (C->CORE, E->ESM, P->PPE).
+    m = containers.Map({'C','E','P'}, {'CORE','ESM','PPE'});
+    key = upper(cid(1));
+    if isKey(m, key)
+        eg = m(key);
+    else
+        eg = 'CORE';
+    end
+end
 
 function fpath = find_model_file(dirpath, var, region, group, model, modelid, esm, forcingid, experiment, configid)
 % Find new-format ISMIP7 file by glob, ignoring the timerange field.
