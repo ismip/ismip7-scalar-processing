@@ -35,8 +35,13 @@ class TimeAxis:
         return len(self.values)
 
 
-def write_scalar_nc(path, varname, values, time_axis, long_name, units):
+def write_scalar_nc(path, varname, values, time_axis, long_name, units,
+                    standard_name=None):
     """Write one time-series variable to a NetCDF file, creating its directory.
+
+    ``standard_name`` is written only when there is one: the data request
+    leaves it blank for a couple of the flux scalars, and the compliance
+    checker asks for the attribute only where the request supplies a value.
 
     Returns the path written, so a caller can log or collect it.
     """
@@ -51,6 +56,8 @@ def write_scalar_nc(path, varname, values, time_axis, long_name, units):
         var_time.calendar = time_axis.calendar
         var_data.long_name = long_name
         var_data.units = units
+        if standard_name:
+            var_data.standard_name = standard_name
         var_time[:] = time_axis.values
         var_data[:] = np.asarray(values)
     print('Created file ', path)

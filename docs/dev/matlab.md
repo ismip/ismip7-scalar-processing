@@ -31,6 +31,14 @@ counterpart.
 **Optional variables.** Python treats `sftgrf`/`sftflf` and the flux variables
 as optional, skipping the output that needs them; MATLAB requires them.
 
+**Variable metadata.** Python reads each scalar's `standard_name`, `units` and
+`long_name` from the data request in the installed `isschecker` package (see
+{doc}`../user/data-sources`). MATLAB cannot, so the same values are restated in
+`st_vars` and `fl_scalar_specs` near the end of `scalars.m`. When the data
+request changes one of them, change those tables too — `compare_outputs.py`
+compares values, not attributes, so this is the one divergence it would not
+catch.
+
 Everything that both compute, they compute identically.
 
 ## Comparing them

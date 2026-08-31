@@ -24,6 +24,20 @@ compare these numbers across submissions; a silent change to one of them is
 worse than no release at all.
 ```
 
+## The relationship with `isschecker`
+
+This package reads the ISMIP7 data request out of `isschecker` at runtime (see
+{doc}`../user/data-sources`), which has two consequences for releases.
+
+**A data request change is released by `isschecker`, not here.** If a
+variable's `standard_name` or `long_name` is corrected upstream, updating
+`isschecker` is enough; this package needs no release at all. That is the point
+of not keeping a copy.
+
+**A change of shape does need a release here** — a renamed column makes the
+lookup fail loudly, and the fix is a change here plus the `isschecker` floor
+raised to the version that has it.
+
 ## Cutting a release
 
 1. Bump `version` in `pyproject.toml` following

@@ -64,3 +64,8 @@ Three lists say the same thing and have to agree:
 
 When a floor moves, move it in all three. {doc}`../user/installation` has the
 table of what each bound is for.
+
+`isschecker` is in that list as a data dependency rather than a code one: none
+of its functions are called, but the ISMIP7 data request it ships fixes the
+metadata of every scalar this package writes. {doc}`../user/data-sources`
+explains the split, and what it means for releases.

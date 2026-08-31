@@ -563,18 +563,23 @@ for ireg = 1:length(regionNames)
         iareafl_list(n) = sum(sftflf(:,:,n) .* A, 'all');
     end
 
+    % standard_name, units and long_name are the ISMIP7 data request's, which
+    % the Python implementation reads from the installed isschecker package
+    % (ISMIP7_variable_request.csv).  MATLAB cannot, so they are restated here;
+    % if the data request changes one, change it here too.
     st_vars = { ...
-        'lim',     'land_ice_mass',                          'kg', lim_hist,     lim_list; ...
-        'limnsw',  'land_ice_mass_not_displacing_sea_water', 'kg', limnsw_hist,  limnsw_list; ...
-        'iareagr', 'grounded_ice_sheet_area',                'm2', iareagr_hist, iareagr_list; ...
-        'iareafl', 'floating_ice_shelf_area',                'm2', iareafl_hist, iareafl_list; ...
+        'lim',     'land_ice_mass',                          'Total ice mass',      'kg',  lim_hist,     lim_list; ...
+        'limnsw',  'land_ice_mass_not_displacing_sea_water', 'Mass above floatation', 'kg', limnsw_hist, limnsw_list; ...
+        'iareagr', 'grounded_ice_sheet_area',                'Grounded ice area',   'm^2', iareagr_hist, iareagr_list; ...
+        'iareafl', 'floating_ice_shelf_area',                'Floating ice area',   'm^2', iareafl_hist, iareafl_list; ...
     };
     for iv = 1:size(st_vars, 1)
-        varname   = st_vars{iv,1};
-        long_name = st_vars{iv,2};
-        units     = st_vars{iv,3};
-        hist_vals = st_vars{iv,4};
-        exp_vals  = st_vars{iv,5};
+        varname       = st_vars{iv,1};
+        standard_name = st_vars{iv,2};
+        long_name     = st_vars{iv,3};
+        units         = st_vars{iv,4};
+        hist_vals     = st_vars{iv,5};
+        exp_vals      = st_vars{iv,6};
         data_out  = [hist_vals; exp_vals];
         if ~exist(ncpath, 'dir'), mkdir(ncpath); end
         if strcmp(regionName_raw, 'mm') && ~flg_bm
@@ -593,6 +598,9 @@ for ireg = 1:length(regionNames)
         ncwriteatt(scfile, 'time',   'calendar',     time_calendar);
         ncwriteatt(scfile, varname,  'long_name',    long_name);
         ncwriteatt(scfile, varname,  'units',        units);
+        if ~isempty(standard_name)
+            ncwriteatt(scfile, varname, 'standard_name', standard_name);
+        end
         fprintf('Created file %s\n', scfile);
     end
 end % ST region loop
@@ -601,21 +609,25 @@ end % ST region loop
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % FL scalar variables (no GIC masking)
 
+% As for the ST scalars above, the metadata is the ISMIP7 data request's.
+% The data request gives no standard_name for the last two, so none is
+% written -- an empty string here means the attribute is left off.
 fl_scalar_specs = { ...
-    'tendacabf',       'acabf',       'tendency_of_land_ice_mass_due_to_surface_mass_balance',        'kg s-1'; ...
-    'tendlibmassbfgr', 'libmassbfgr', 'tendency_of_land_ice_mass_due_to_basal_mass_balance_grounded', 'kg s-1'; ...
-    'tendlibmassbffl', 'libmassbffl', 'tendency_of_land_ice_mass_due_to_basal_mass_balance_floating', 'kg s-1'; ...
-    'tendlicalvf',     'licalvf',     'tendency_of_land_ice_mass_due_to_calving',                     'kg s-1'; ...
-    'tendlifmassbf',   'lifmassbf',   'tendency_of_land_ice_mass_due_to_ice_front_melting',            'kg s-1'; ...
-    'tendligroundf',   'ligroundf',   'tendency_of_land_ice_mass_due_to_grounding_line_migration',     'kg s-1'; ...
+    'tendacabf',       'acabf',       'tendency_of_land_ice_mass_due_to_surface_mass_balance',  'Total SMB flux',                      'kg s-1'; ...
+    'tendlibmassbfgr', 'libmassbfgr', 'tendency_of_land_ice_mass_due_to_basal_mass_balance',    'Total BMB flux beneath grounded ice', 'kg s-1'; ...
+    'tendlibmassbffl', 'libmassbffl', 'tendency_of_land_ice_mass_due_to_basal_mass_balance',    'Total BMB flux beneath floating ice', 'kg s-1'; ...
+    'tendlicalvf',     'licalvf',     'tendency_of_land_ice_mass_due_to_calving',               'Total calving flux',                  'kg s-1'; ...
+    'tendlifmassbf',   'lifmassbf',   '',                                                       'Total ice front melting flux',        'kg s-1'; ...
+    'tendligroundf',   'ligroundf',   '',                                                       'Total grounding line flux',           'kg s-1'; ...
 };
 skipped_fl = {};
 
 for ifl = 1:size(fl_scalar_specs, 1)
-    tendvarname = fl_scalar_specs{ifl,1};
-    input_var   = fl_scalar_specs{ifl,2};
-    long_name   = fl_scalar_specs{ifl,3};
-    units       = fl_scalar_specs{ifl,4};
+    tendvarname   = fl_scalar_specs{ifl,1};
+    input_var     = fl_scalar_specs{ifl,2};
+    standard_name = fl_scalar_specs{ifl,3};
+    long_name     = fl_scalar_specs{ifl,4};
+    units         = fl_scalar_specs{ifl,5};
 
     % Find exp FL file; skip variable if not found
     try
@@ -729,6 +741,9 @@ for ifl = 1:size(fl_scalar_specs, 1)
         ncwriteatt(scfile, 'time',        'calendar',     fl_time_calendar);
         ncwriteatt(scfile, tendvarname,   'long_name',    long_name);
         ncwriteatt(scfile, tendvarname,   'units',        units);
+        if ~isempty(standard_name)
+            ncwriteatt(scfile, tendvarname, 'standard_name', standard_name);
+        end
         fprintf('Created file %s\n', scfile);
     end
 end % FL variable loop

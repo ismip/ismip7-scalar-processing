@@ -11,6 +11,7 @@ numbers come from. If you have not installed the tools yet, start with
 
 installation
 file-conventions
+data-sources
 running
 output
 slc-methods

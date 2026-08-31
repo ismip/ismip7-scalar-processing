@@ -93,6 +93,12 @@ One NetCDF file each, no GIC masking:
 These need `sftgrf` and `sftflf` in the model output. Without them the whole
 block is skipped with a warning and the rest of the run still succeeds.
 
+The `long_name`, `units` and `standard_name` written on each are the ISMIP7
+data request's, read from the `isschecker` package rather than restated here —
+see {doc}`data-sources`. The table above gives the standard names; the
+`long_name` is the data request's own wording (`Total ice mass` for `lim`, and
+so on).
+
 ## Flux scalars
 
 The gridded mass fluxes, integrated over the mask. One NetCDF file each, no GIC
@@ -108,7 +114,10 @@ masking, all in kg s⁻¹:
 | `tendligroundf` | `ligroundf` | `..._due_to_grounding_line_migration` |
 
 Each is skipped on its own if its input file is absent, and the names of the
-ones that were skipped are listed at the end of the run.
+ones that were skipped are listed at the end of the run. As for the state
+scalars, the attributes come from the data request. The request gives no
+`standard_name` for `tendlifmassbf` or `tendligroundf`, so those two files
+carry none.
 
 Flux files sit on their own time axis -- timestamps at Jul 1 of year N, against
 Jan 1 of year N+1 for the state variables -- so their `{y0}-{y1}` may differ
@@ -118,5 +127,6 @@ from that of the other output of the same run.
 
 `time` plus one variable, both `f8`, on an unlimited `time` dimension. The time
 coordinate carries the `units`, `calendar` and `long_name` of the model file it
-came from, and the data variable its own `long_name` and `units`. A
-`description` global attribute names the processing.
+came from, and the data variable its own `long_name`, `units` and — where the
+data request gives one — `standard_name`. A `description` global attribute
+names the processing.

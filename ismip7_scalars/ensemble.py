@@ -22,10 +22,10 @@ import os
 import re
 import subprocess
 import sys
-from importlib.resources import as_file, files
 
 from ismip7_scalars import __version__
 from ismip7_scalars.naming import parse_ismip7_name
+from ismip7_scalars.paths import core_experiments_path
 
 EXP_GROUP_RE = re.compile(r'^(CORE|ESM|PPE)$')
 CONFIGID_RE = re.compile(r'^[CEP]\d{3}$')
@@ -35,21 +35,19 @@ CONFIGID_RE = re.compile(r'^[CEP]\d{3}$')
 SELF_PAIRED_SCENARIOS = {'historical', 'ctrl'}
 
 
-def core_csv_path():
-    """Path to the bundled CORE experiment table, as a context manager."""
-    return as_file(files('ismip7_scalars.data')
-                   / 'ISMIP7_experiments_CORE.csv')
-
-
 def load_core_csv(path=None):
     """``configid -> {'scenario': str, 'esm': str}`` from the CORE table.
+
+    The table is this package's own data rather than the project's: it records
+    which historical run each projection is paired with, which is a decision
+    the driver makes.  The ISMIP7 data request, which *is* the project's, comes
+    from isschecker instead -- see :mod:`ismip7_scalars.paths`.
 
     Returns an empty table if the file is missing, in which case pairing falls
     back on the configid numbering.
     """
     if path is None:
-        with core_csv_path() as resolved:
-            return load_core_csv(str(resolved))
+        path = str(core_experiments_path())
     table = {}
     if not os.path.exists(path):
         print(f'WARNING: {path} not found -- hist pairing falls back to '

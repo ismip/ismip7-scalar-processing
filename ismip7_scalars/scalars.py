@@ -33,6 +33,7 @@ from ismip7_scalars.naming import (
     resolution_string,
 )
 from ismip7_scalars.slc import slc_A2020, slc_G2020, slc_vaf
+from ismip7_scalars.variables import variable_metadata
 from ismip7_scalars.writers import (
     TimeAxis,
     warn_years_out_of_range,
@@ -59,35 +60,32 @@ FLG_FL_NC = True        # FL scalars:          write NetCDF
 #: year; ``False`` evaluates every step against the reference state directly.
 FLG_A20_CUMUL = True
 
-#: The three SLC methods, as ``(variable name, long name)``.
+#: The three SLC methods, as ``(variable name, long name)``.  These are the one
+#: class of output not in the ISMIP7 data request -- a sea-level contribution
+#: is derived here rather than submitted by a model -- so their metadata is
+#: this package's own rather than read from isschecker.
 SLC_SPECS = (
     ('slvaf', 'Sea level contribution based on Vaf'),
     ('slg20', 'Sea level contribution based on G2020'),
     ('sla20', 'Sea level contribution based on A2020'),
 )
 
-#: ST (state) scalars, as ``(variable name, long name, units)``.
-ST_SCALAR_SPECS = (
-    ('lim', 'land_ice_mass', 'kg'),
-    ('limnsw', 'land_ice_mass_not_displacing_sea_water', 'kg'),
-    ('iareagr', 'grounded_ice_sheet_area', 'm2'),
-    ('iareafl', 'floating_ice_shelf_area', 'm2'),
-)
+#: ST (state) scalars this package writes.  Their standard_name, units and
+#: long_name come from the ISMIP7 data request via
+#: :func:`~ismip7_scalars.variables.variable_metadata`, not from here: each is
+#: a requested variable in its own right, and restating its metadata is how the
+#: two tools come to disagree about what it is called.
+ST_SCALAR_NAMES = ('lim', 'limnsw', 'iareagr', 'iareafl')
 
-#: FL (flux) scalars, as ``(output name, input variable, long name, units)``.
+#: FL (flux) scalars, as ``(output name, the gridded variable integrated to
+#: produce it)``.  Metadata likewise comes from the data request.
 FL_SCALAR_SPECS = (
-    ('tendacabf', 'acabf',
-     'tendency_of_land_ice_mass_due_to_surface_mass_balance', 'kg s-1'),
-    ('tendlibmassbfgr', 'libmassbfgr',
-     'tendency_of_land_ice_mass_due_to_basal_mass_balance_grounded', 'kg s-1'),
-    ('tendlibmassbffl', 'libmassbffl',
-     'tendency_of_land_ice_mass_due_to_basal_mass_balance_floating', 'kg s-1'),
-    ('tendlicalvf', 'licalvf',
-     'tendency_of_land_ice_mass_due_to_calving', 'kg s-1'),
-    ('tendlifmassbf', 'lifmassbf',
-     'tendency_of_land_ice_mass_due_to_ice_front_melting', 'kg s-1'),
-    ('tendligroundf', 'ligroundf',
-     'tendency_of_land_ice_mass_due_to_grounding_line_migration', 'kg s-1'),
+    ('tendacabf', 'acabf'),
+    ('tendlibmassbfgr', 'libmassbfgr'),
+    ('tendlibmassbffl', 'libmassbffl'),
+    ('tendlicalvf', 'licalvf'),
+    ('tendlifmassbf', 'lifmassbf'),
+    ('tendligroundf', 'ligroundf'),
 )
 
 #: IMBIE3 mask names per region, as ``(NetCDF variable, {name: id})``.
@@ -709,7 +707,7 @@ def compute_st_series(geom, c, region_mask, af2, maxmask1, area_m2):
     """The four ST scalars for one mask, as ``{name: array}``."""
     A = region_mask * af2 * area_m2
 
-    values = {name: [] for name, _, _ in ST_SCALAR_SPECS}
+    values = {name: [] for name in ST_SCALAR_NAMES}
 
     def accumulate(lithk, topg, sftgrf, sftflf, indices):
         for n in indices:
@@ -827,13 +825,15 @@ def run(settings):
             regionName = region_display_name(regionName_raw, settings.region)
             values = compute_st_series(geom, c, region_mask, af2, maxmask1,
                                        area_m2)
-            for varname, long_name, units in ST_SCALAR_SPECS:
+            for varname in ST_SCALAR_NAMES:
+                standard_name, units, long_name = variable_metadata(varname)
                 stem = make_out_stem(varname, '', regionName_raw, regionName,
                                      file_stem, settings.flg_bm)
                 if FLG_ST_NC:
                     write_scalar_nc(
                         os.path.join(settings.ncpath, f'{stem}.nc'), varname,
-                        values[varname], time_axis, long_name, units)
+                        values[varname], time_axis, long_name, units,
+                        standard_name=standard_name)
 
     # ---- FL scalars, no GIC masking ----
     skipped_scalars = run_fl_scalars(settings, geom, regions, af2, area_m2,
@@ -856,7 +856,8 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
     skipped = []
     weight_base = af2 * area_m2
 
-    for tendvarname, input_var, long_name, units in FL_SCALAR_SPECS:
+    for tendvarname, input_var in FL_SCALAR_SPECS:
+        standard_name, units, long_name = variable_metadata(tendvarname)
         fl_exp_file = find_model_file(
             settings.exppath, input_var, settings.region, settings.group,
             settings.model, settings.modelid, settings.esm,
@@ -934,7 +935,8 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
             if FLG_FL_NC:
                 write_scalar_nc(os.path.join(settings.ncpath, f'{stem}.nc'),
                                 tendvarname, fl_integral, fl_time_axis,
-                                long_name, units)
+                                long_name, units,
+                                standard_name=standard_name)
 
     return skipped
 

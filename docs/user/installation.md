@@ -52,6 +52,7 @@ install from source, where the environment is yours to create -- see
 | `python` | `>=3.11,<3.15` | `tomllib` and `X \| None` annotations; 3.10 is EOL in Oct 2026 |
 | `numpy` | `>=2.1,<3` | what recent conda-forge `netCDF4` builds are built against |
 | `netCDF4` | `>=1.7,<2` | every input is read and every output written through it |
+| `isschecker` | `>=0.2,<1` | ships the ISMIP7 data request — see {doc}`data-sources` |
 
 The constraints live in `ismip7_scalars_env.yml`, and the same ones appear in
 `pyproject.toml`. The test suite runs at both ends of every range, so results

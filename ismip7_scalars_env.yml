@@ -26,6 +26,12 @@ dependencies:
   # written through it
   - netcdf4 >=1.7,<2
 
+# ISMIP7 conventions
+  # A data dependency: the ISMIP7 data request, which fixes the standard_name,
+  # units and long_name of every scalar written here, is read out of the
+  # isschecker package rather than copied into this one
+  - isschecker >=0.2,<1
+
 # Testing
   - pytest >=8
 

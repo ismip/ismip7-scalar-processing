@@ -20,9 +20,13 @@ classifiers = [
 # path is `pip install --no-deps --no-build-isolation .` into the conda
 # environment, so pip never resolves these; they are here so the metadata is
 # honest about what the package needs.
+# isschecker is a data dependency, not a code one: the ISMIP7 data request
+# fixes the standard_name, units and long_name of every scalar this package
+# writes, and is read out of that package rather than copied into this one.
 dependencies = [
     "numpy>=2.1,<3",
     "netCDF4>=1.7,<2",
+    "isschecker>=0.2,<1",
 ]
 
 [project.optional-dependencies]

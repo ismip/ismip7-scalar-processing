@@ -23,6 +23,7 @@ from ismip7_scalars.scalars import (
     resolve_hist_n_out,
     settings_from_args,
 )
+from ismip7_scalars.variables import variable_metadata
 from tests import synthetic
 
 BASE_ARGS = ['--region', 'AIS', '--experiment', 'ssp585', '--configid',
@@ -241,6 +242,46 @@ class TestDefaultRun:
         assert 'Skipped scalars' in out
         assert 'tendlicalvf' in out
         assert 'tendacabf' not in out.split('Skipped scalars')[1]
+
+
+class TestOutputMetadata:
+    """Every scalar this package writes is itself a requested ISMIP7 variable,
+    so its attributes have to be the ones the data request gives it -- which is
+    what the compliance checker will look for."""
+
+    def _attrs(self, outpath, varname):
+        matches = glob.glob(os.path.join(nc_dir(outpath), f'{varname}_*.nc'))
+        assert len(matches) == 1
+        with nc.Dataset(matches[0]) as ds:
+            var = ds.variables[varname]
+            return {name: var.getncattr(name) for name in var.ncattrs()}
+
+    @pytest.mark.parametrize('varname', ['lim', 'limnsw', 'iareagr',
+                                         'iareafl', 'tendacabf'])
+    def test_attributes_come_from_the_data_request(self, default_run,
+                                                   varname):
+        standard_name, units, long_name = variable_metadata(varname)
+        attrs = self._attrs(default_run, varname)
+        assert attrs['standard_name'] == standard_name
+        assert attrs['units'] == units
+        assert attrs['long_name'] == long_name
+
+    def test_standard_name_is_written(self, default_run):
+        """It used to be absent, with the standard name put in long_name
+        instead; the checker reports a missing standard_name as an error."""
+        assert 'standard_name' in self._attrs(default_run, 'lim')
+
+    def test_long_name_is_the_data_request_long_name(self, default_run):
+        assert self._attrs(default_run, 'lim')['long_name'] == \
+            'Total ice mass'
+
+    def test_sea_level_variables_carry_no_standard_name(self, default_run):
+        """They are derived here rather than requested from a model, so there
+        is no data request entry to take one from."""
+        attrs = self._attrs(default_run, 'slvaf')
+        assert 'standard_name' not in attrs
+        assert attrs['units'] == 'm'
+        assert attrs['long_name'] == 'Sea level contribution based on Vaf'
 
 
 class TestCsvOutput:

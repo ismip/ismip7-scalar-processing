@@ -20,4 +20,6 @@ dependencies:
   - numpy =2.1
   - netcdf4 =1.7
 
+  - isschecker =0.2
+
   - pytest =8

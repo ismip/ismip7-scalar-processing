@@ -24,8 +24,13 @@ The repository is laid out like this:
 `ismip7_scalars/slc/`
 : the three sea-level methods, plus `slc_G2020_publ` as a cross-check.
 
+`ismip7_scalars/paths.py`, `ismip7_scalars/variables.py`
+: where the data files come from, and the ISMIP7 data request lookup. The
+  data request is read from `isschecker`, not copied; see
+  {doc}`../user/data-sources`.
+
 `ismip7_scalars/data/`
-: the CORE experiment table, bundled as package data.
+: the CORE experiment table — this package's own, unlike the data request.
 
 `tests/`
 : the test suite, including `synthetic.py`, which writes the miniature
