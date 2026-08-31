@@ -85,7 +85,18 @@ oarea = 3.625e14; % m2 (Gregory et al., 2019)
 % Ice sheet mask
 maxmask1 = double(ncread(mminput, 'maxmask1')); % (nx, ny)
 sheet = maxmask1 * 0 + 1; % full grid
-regions = struct('mm', sheet);
+if ~flg_mm && ~flg_bm
+    error(['flg_mm=false skips the whole ice sheet integral, which is the ' ...
+           'only output flg_bm=false asks for; set flg_bm=true to get the ' ...
+           'basins instead.']);
+end
+if flg_mm
+    regions = struct('mm', sheet);
+else
+    % flg_mm=false: basins only.  Build an empty struct with no fields so the
+    % region loops below simply skip the whole ice sheet.
+    regions = struct();
+end
 
 % Basin masks
 if flg_bm
@@ -222,8 +233,9 @@ end
 % Model density parameters
 params_file = [params_path '/' group '/' model '/params.nc'];
 if ~isfile(params_file)
-    error('Missing params.nc for %s/%s.\n  Expected: %s\n  Generate it with: bash tools/set_params.sh', ...
-          group, model, params_file);
+    error(['Missing params.nc for %s/%s.\n  Expected: %s\n  Generate it with: ' ...
+           'ismip7-scalars-set-params --region <region> --group %s --model %s'], ...
+          group, model, params_file, group, model);
 end
 c.RHOI  = double(ncread(params_file, 'rhoi'));
 c.RHOSW = double(ncread(params_file, 'rhow'));
