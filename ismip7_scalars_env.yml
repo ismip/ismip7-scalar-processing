@@ -1,0 +1,41 @@
+# Development environment: everything needed to work on the scalar processing
+# -- its dependencies, the test suite's, and the documentation build's -- but
+# not the package itself, which is then pip-installed from a source checkout
+# (see "Installing from source" in the developer guide).  To *use* the tools,
+# install from conda-forge instead -- `conda create -n ismip7-scalars -c
+# conda-forge ismip7-scalars` -- which brings the runtime packages with it.
+name: ismip7-scalars
+channels:
+  - conda-forge
+  # Never let a user's `defaults` channel leak into the solve: it would give
+  # different builds on different machines.
+  - nodefaults
+
+dependencies:
+# Interpreter and build tools
+  - python >=3.11,<3.15
+  - pip >=24
+  # setuptools is required by `pip install --no-build-isolation` (conda-forge
+  # python no longer vendors it); >=77 for PEP 639 license metadata
+  - setuptools >=77
+
+# Core scientific python
+  # numpy >=2.1 is what recent conda-forge netcdf4 builds are built against
+  - numpy >=2.1,<3
+  # netCDF4 is the only I/O layer: every input is read and every output
+  # written through it
+  - netcdf4 >=1.7,<2
+
+# Testing
+  - pytest >=8
+
+# Documentation
+  # The docs build needs none of the packages above -- it takes the version
+  # from pyproject.toml and nothing else -- but a developer environment should
+  # be able to build them.  CI uses the smaller ci/docs_env.yml instead; keep
+  # the two in step.
+  - sphinx >=8
+  - myst-parser >=4
+  - furo
+  - sphinx-copybutton
+  - sphinx-design

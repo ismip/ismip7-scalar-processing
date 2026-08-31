@@ -10,7 +10,7 @@
 # z0 in eq 13 and 14 is called zn here to avoid confusion with the reference symbols.
 
 import numpy as np
-#from slc import sl_constants as c
+#from ismip7_scalars.slc import sl_constants as c
 # pass constants c as arguments to functions c.RHOI, c.RHOSW, c.RHOFW, c.AO
 # typical values
 # c.RHOI  = 917.0 #kg/m3
@@ -93,8 +93,10 @@ def get_slc_gr_G2020(H0,H,b0,b,sl0,sl,A,c):
 
 # total ice volume change 
 def get_vtot_G2020(H,A,c):
-    H_tot = H *c.RHOSW/c.RHOI 
-    vol = np.sum(H_tot)
+    # The RHOSW/RHOI factor is undone by get_slc_tot_G2020, which divides by
+    # it again; it is kept so the two functions read like eq. 4's pair.
+    H_tot = H *c.RHOSW/c.RHOI
+    vol = np.sum(H_tot*A)
     return vol
 
 def get_slc_tot_G2020(H0,H,A,c):

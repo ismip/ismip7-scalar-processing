@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ismip7-scalars"
+version = "0.1.0"
+description = "Sea-level contributions and other scalar diagnostics from ISMIP7 ice sheet model output"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.11,<3.15"
+authors = [{ name = "Heiko Goelzer", email = "heig@norceresearch.no" }]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+]
+# These must stay in sync with ismip7_scalars_env.yml.  The supported install
+# path is `pip install --no-deps --no-build-isolation .` into the conda
+# environment, so pip never resolves these; they are here so the metadata is
+# honest about what the package needs.
+dependencies = [
+    "numpy>=2.1,<3",
+    "netCDF4>=1.7,<2",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+# The docs build needs neither the package nor its dependencies -- it reads the
+# version from pyproject.toml and nothing else -- so this extra stands alone.
+# It must stay in sync with the documentation section of
+# ismip7_scalars_env.yml, the developer environment, and with ci/docs_env.yml,
+# the smaller environment CI builds the docs in.
+docs = [
+    "sphinx>=8",
+    "myst-parser>=4",
+    "furo",
+    "sphinx-copybutton",
+    "sphinx-design",
+]
+
+[project.urls]
+Homepage = "https://github.com/ismip/ismip7-scalar-processing"
+Documentation = "https://ismip.github.io/ismip7-scalar-processing/"
+Issues = "https://github.com/ismip/ismip7-scalar-processing/issues"
+
+[project.scripts]
+ismip7-scalars = "ismip7_scalars.scalars:main"
+ismip7-scalars-ensemble = "ismip7_scalars.ensemble:main"
+ismip7-scalars-set-params = "ismip7_scalars.params:main"
+
+[tool.setuptools]
+packages = ["ismip7_scalars", "ismip7_scalars.slc", "ismip7_scalars.data"]
+
+[tool.setuptools.package-data]
+"ismip7_scalars.data" = ["*.csv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

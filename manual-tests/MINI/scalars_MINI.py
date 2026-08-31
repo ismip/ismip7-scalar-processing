@@ -1,19 +1,17 @@
 # Calculate scalar variables from ISMIP7 3D model output - MINI test case
 # Heiko Goelzer 2026 (heig@norceresearch.no)
 
-import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../python'))
 
 import argparse
 import netCDF4 as nc
 import numpy as np
 from types import SimpleNamespace
 
-from slc import slc_vaf
-from slc import slc_G2020
-from slc import slc_A2020
-from slc.sl_constants import RHOI, RHOSW, RHOFW, AO
+from ismip7_scalars.slc import slc_vaf
+from ismip7_scalars.slc import slc_G2020
+from ismip7_scalars.slc import slc_A2020
+from ismip7_scalars.slc.sl_constants import RHOI, RHOSW, RHOFW, AO
 
 # Data file naming
 FILE_CONFIG = {
@@ -31,17 +29,23 @@ parser.add_argument("--exp",       required=True,                  help="Experim
 parser.add_argument("--ref",       default=None,                   help="Reference experiment; if omitted, uses first timestep of exp")
 parser.add_argument("--refyear",   type=int, default=None,         help="Year to use as SLC reference (default: last timestep of ref experiment)")
 parser.add_argument("--res",       default=None,                   help="Resolution (not used in MINI file naming)")
-parser.add_argument("--datapath",  default=None,                   help="Path to generic data (default: ../../Data/<model>)")
-parser.add_argument("--modelpath", default=None,                   help="Path to model output (default: ../../Models/MINI/ISMIP7/<model>)")
-parser.add_argument("--outpath",   default="./output",             help="Path for output scalar files")
+parser.add_argument("--datapath",  default=None,                   help="Path to generic data (default: the committed test-data/ tree)")
+parser.add_argument("--modelpath", default=None,                   help="Path to model output (default: the committed test-data/ tree)")
+parser.add_argument("--outpath",   default=None,                   help="Path for output scalar files (default: manual-tests/MINI/output)")
 args = parser.parse_args()
+
+# Resolve the defaults from this script's location rather than the working
+# directory, so the MINI cases run from anywhere in a checkout.
+_here      = os.path.dirname(os.path.abspath(__file__))
+_repo_root = os.path.abspath(os.path.join(_here, "..", ".."))
+_test_data = os.path.join(_repo_root, "test-data")
 
 lab       = args.lab
 model     = args.model
 exp       = args.exp
-datapath  = args.datapath  if args.datapath  else "../../Data/" + model
-modelpath = args.modelpath if args.modelpath else "../../Models/MINI/ISMIP7/" + model
-outpath   = args.outpath
+datapath  = args.datapath  if args.datapath  else os.path.join(_test_data, "Data", model)
+modelpath = args.modelpath if args.modelpath else os.path.join(_test_data, "Models", "MINI", "ISMIP7", model)
+outpath   = args.outpath   if args.outpath   else os.path.join(_here, "output")
 ## What output to produce
 flg_mm = True   # Integrals on model mask
 flg_bm = False  # IMBIE3 basins
@@ -229,6 +233,7 @@ for regionName, region_mask in vars(regions).items():
     ###############################################
     # Write netcdf file
 
+    os.makedirs(outpath, exist_ok=True)
     scfile = outpath + "/scalars_" + regionName + "_" + file_suffix
     ds = nc.Dataset(scfile, 'w', format='NETCDF4')
     ds.createDimension('time', None)
