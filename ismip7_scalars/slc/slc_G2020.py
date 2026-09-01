@@ -83,8 +83,10 @@ def get_slc_gr_G2020(H0,H,B0,B,A,c):
 
 # total ice volume change 
 def get_vtot_G2020(H,A,c):
-    H_tot = H *c.RHOSW/c.RHOI 
-    vol = np.sum(H_tot)
+    # The RHOSW/RHOI factor is undone by get_slc_tot_G2020, which divides by
+    # it again; it is kept so the two functions read like eq. 4's pair.
+    H_tot = H *c.RHOSW/c.RHOI
+    vol = np.sum(H_tot*A)
     return vol
 
 def get_slc_tot_G2020(H0,H,A,c):

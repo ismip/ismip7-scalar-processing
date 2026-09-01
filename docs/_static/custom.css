@@ -1,0 +1,17 @@
+/* Tables of options and variables are wide; let them scroll rather than
+   squeezing the column widths down to nothing. */
+.wy-table-responsive table td,
+.wy-table-responsive table th {
+    white-space: normal;
+}
+
+table.docutils {
+    display: block;
+    overflow-x: auto;
+}
+
+/* Definition lists are used for file layouts, where the term is a path. */
+dl.simple dt {
+    font-family: var(--font-stack--monospace);
+    font-weight: 600;
+}
