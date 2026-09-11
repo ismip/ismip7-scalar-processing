@@ -1,112 +1,108 @@
 # Running the processing
 
 ```bash
-ismip7-scalars --region {AIS,GrIS} [options]
+ismip7-scalars --region AIS [options]
 ```
 
-`--region` is the only required option. Everything else defaults to the
-ISMIP7/SYNTH1 synthetic test case produced by the
-[ISM_SimulationChecker](https://github.com/ismip/ISM_SimulationChecker):
-`--group ISMIP7 --model SYNTH1 --modelid m001 --esm CESM2-WACCM --forcingid
-f001 --configid C001 --hist historical`, with `--experiment ssp585` for
-Antarctica and `--experiment ctrl` for Greenland.
+Only `--region` is required. Everything else defaults to the synthetic
+ISMIP7/SYNTH1 test case from the
+[ISM_SimulationChecker](https://github.com/ismip/ISM_SimulationChecker), so a
+real run sets at least the options in the first table.
 
 ## Identifying the run
 
-| Option | Meaning |
-|---|---|
-| `--region {AIS,GrIS}` | Ice sheet. Required. |
-| `--group` | Submitting institution |
-| `--model` | Ice sheet model name |
-| `--modelid`, `--ism-member-id` | ISM member ID (`mNNN`) |
-| `--esm` | Climate forcing model |
-| `--forcingid` | Forcing realization (`fNNN`) |
-| `--experiment` | Scenario, e.g. `ssp585` |
-| `--configid` | Configuration counter (`[CEP]NNN`) |
-| `--exp-group` | `CORE`, `ESM` or `PPE`; defaults from the configid prefix |
+| Option | Meaning | Example |
+|---|---|---|
+| `--region` | ice sheet; required | AIS, GrIS |
+| `--group` | submitting institution | VUW |
+| `--model` | ice sheet model | PISM1 |
+| `--modelid` | ISM member ID | m001 |
+| `--esm` | climate forcing model | CESM2-WACCM |
+| `--forcingid` | forcing realization | f001 |
+| `--experiment` | scenario | ssp585 |
+| `--configid` | configuration counter | C007 |
+| `--exp-group` | CORE, ESM or PPE; normally taken from the configid's first letter | CORE |
 
-Together these pick exactly one set of files, as described in
-{doc}`file-conventions`. The resolution is not among them: it is detected from
-the spacing of the model's `x` axis.
+Together these name exactly one set of files, as described in
+{doc}`file-conventions`. Resolution is not among them: it is read from the
+spacing of the model grid.
 
 ## The historical reference
 
-Sea-level contribution is a *change*, so every series needs a state to measure
-against. By default that is the last timestep of the historical experiment.
+Sea-level contribution is a change, so every series needs a state to measure
+from. By default that is the last timestep of the historical experiment.
 
-| Option | Meaning |
-|---|---|
-| `--hist` | Historical experiment name (default: `historical`) |
-| `--hist-configid` | Its configid (default: same as `--configid`) |
-| `--hist-exp-group` | Its directory level (default: same as `--exp-group`) |
-| `--refyear` | Use this year as the reference instead of the last historical timestep |
+| Option | Meaning | Default |
+|---|---|---|
+| `--hist` | historical experiment name | historical |
+| `--hist-configid` | its configid | same as `--configid` |
+| `--hist-exp-group` | its experiment group | same as `--exp-group` |
+| `--refyear` | use this year as the reference instead | last historical step |
 
-`--hist-configid` is what a CORE run normally needs: C001 is the shared
-historical reference for the C003, C005 and C007 projections, so
+A CORE projection normally needs `--hist-configid`, because C001 is the
+shared historical run for the C003, C005 and C007 projections:
 
 ```bash
 ismip7-scalars --region AIS --configid C007 --experiment ssp585 \
     --hist historical --hist-configid C001
 ```
 
-Setting `--experiment` equal to `--hist` processes the historical run on its
-own. It is then its own reference, and nothing is prepended.
+To process the historical run on its own, give it as the experiment too
+(`--experiment historical`). It is then its own reference and nothing is
+prepended.
 
 ```{note}
-`--refyear` names a **timestamp** year, which for a state variable is one more
-than the nominal year: `--refyear 2050` selects the timestep stamped Jan 1
-2050, the last one of nominal year 2049. The year is looked for in the
-historical run first and then in the projection; if it is in neither, the run
-skips with an explanation.
+`--refyear` takes a **timestamp** year, which for a state variable is one more
+than the nominal year: `--refyear 2050` selects the step stamped 2050-01-01,
+the end of nominal year 2049. The year is looked for in the historical run
+first and then in the projection. If it is in neither, the run skips and
+says so.
 ```
 
 ## How much history to write out
 
-`--histout N`
+The reference always comes from the historical run. `--histout` controls how
+much of that run is prepended to the output:
 
-The reference state comes from the historical run whether or not any of that
-run appears in the output. `--histout` controls how much of it is prepended:
-
-| Value | Effect |
+| `--histout` | Output starts at |
 |---|---|
-| `-1` | All historical timesteps (the default) |
-| `0` | None; the output covers the projection only |
-| `1` | The last historical timestep only, so the series starts at zero |
-| `N` | The last `N`, clamped to the run's length with a warning |
+| -1 | the first historical step (the default) |
+| 0 | the first projection step |
+| 1 | the last historical step, so the series starts at zero |
+| N | the last N historical steps, or all of them with a warning if there are fewer |
 
-Prepending history never changes the projection values it precedes -- only what
-comes before them, and the year range in the filename.
+Prepending history never changes the projection values, only what comes before
+them and the year range in the filename.
 
 ## Which masks to integrate over
 
-| Option | Effect |
+| Option | Masks |
 |---|---|
-| *(default)* | The whole ice sheet |
-| `--basins` | The IMBIE3 basins and regions **as well as** the whole ice sheet |
-| `--basins --no-mm` | The basins only |
+| (default) | the whole ice sheet |
+| `--basins` | the whole ice sheet **and** each basin and region |
+| `--basins --no-mm` | each basin and region only |
 
-For Antarctica `--basins` adds the three IMBIE3 regions (`wais`, `eais`,
-`pina`) and the 18 IMBIE3 basins (`r01`…`r18`); for Greenland it adds the seven
-Mouginot basins (`no`, `ne`, `ce`, `se`, `sw`, `cw`, `nw`). Each partitions the
-grid, so the per-basin values sum to the whole-sheet value.
+For Antarctica the basins are the three IMBIE3 regions (wais, eais, pina) and
+the 18 IMBIE3 basins (r01 to r18). For Greenland they are the seven Mouginot
+basins (no, ne, ce, se, sw, cw, nw). Each set partitions the grid, so the
+per-basin values sum to the whole-sheet value.
 
-`--no-mm` on its own is refused: it would leave nothing to compute.
-
-Turning `--basins` on also changes the whole-sheet filenames, which gain the
-mask name as a second field -- see {doc}`output`.
+`--no-mm` on its own is refused: it would leave nothing to compute. Turning
+`--basins` on also adds the mask name to the whole-sheet filenames; see
+{doc}`output`.
 
 ## Paths
 
-| Option | Default |
-|---|---|
-| `--datapath` | `./Data/{region}` |
-| `--modelpath` | `./Models/{region}` |
-| `--params-path` | same as `--modelpath` |
-| `--outpath` | `./Output` |
+| Option | Points at | Default |
+|---|---|---|
+| `--modelpath` | the ice sheet directory of the model tree, which holds a folder per group | Models/AIS or Models/GrIS |
+| `--datapath` | the area factors and masks | Data/AIS or Data/GrIS |
+| `--params-path` | the ice sheet directory of a tree holding params.nc files | same as `--modelpath` |
+| `--outpath` | where the output goes | Output |
 
-All four are relative to the directory you run the command in. Use
-`--params-path` when the model tree is read-only -- a submissions tree on NIRD,
-say -- and the densities live somewhere you can write.
+Defaults are relative to the directory you run the command in. The model path
+is *not* your model's own directory; see {doc}`file-conventions`. Use
+`--params-path` when the model tree is read-only.
 
 ## Other
 
@@ -117,12 +113,12 @@ say -- and the densities live somewhere you can write.
 
 | Code | Meaning |
 |---|---|
-| 0 | The run finished |
-| 2 | A required input was missing; one `SKIP:` line says which |
-| other | A genuine failure |
+| 0 | the run finished |
+| 2 | a required input was missing; one SKIP line says which |
+| anything else | a bug; please report it |
 
-Exit 2 exists so that {doc}`ensemble` can log a unit it could not process and
-carry on to the next one. Some inputs are only needed for part of the output:
-missing `sftgrf`/`sftflf` skips the state scalars and still writes everything
-else, and each flux variable is skipped on its own if its input file is absent.
-Those are warnings, and the run still exits 0.
+Exit 2 lets {doc}`ensemble` log a unit it could not process and carry on.
+Some inputs are only needed for part of the output: without sftgrf and sftflf
+the state scalars are skipped and everything else is still written, and each
+flux variable is skipped on its own if its file is absent. Those are
+warnings, and the run still exits 0.
