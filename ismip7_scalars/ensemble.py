@@ -190,13 +190,14 @@ def build_parser():
                         version=f'ismip7-scalars-ensemble {__version__}')
     parser.add_argument('--region', required=True, choices=['AIS', 'GrIS'])
     parser.add_argument('--modelpath', required=True,
-                        help='Submissions root, e.g. '
+                        help='The ice sheet directory of the submission '
+                             'tree, which holds a folder per group, e.g. '
                              '.../ISMIP7_submissions/GrIS')
     parser.add_argument('--datapath', default=None,
                         help='Passed through: path to the generic data files')
     parser.add_argument('--params-path', default=None,
-                        help='Root for params.nc '
-                             '(<params-path>/<group>/<model>/params.nc)')
+                        help='Passed through: the ice sheet directory of a '
+                             'tree holding params.nc files')
     parser.add_argument('--outpath', default=None, help='Passed through')
     parser.add_argument('--exp-group', default=None,
                         help='Only this exp_group (CORE/ESM/PPE)')

@@ -244,11 +244,15 @@ def build_parser():
                         help='Path to generic data files '
                              '(default: ./Data/<region>)')
     parser.add_argument('--modelpath', default=None,
-                        help='Path to model output '
+                        help='The ice sheet directory of the model tree, '
+                             'e.g. Models/AIS, which holds a folder per '
+                             'group. Not the model\'s own directory: the '
+                             'group and model are added to it '
                              '(default: ./Models/<region>)')
     parser.add_argument('--params-path', default=None,
-                        help='Root for params.nc: '
-                             '<params-path>/<group>/<model>/params.nc '
+                        help='The ice sheet directory of a tree holding '
+                             'params.nc files, laid out like the model tree; '
+                             'use it when the model tree is read-only '
                              '(default: same as --modelpath)')
     parser.add_argument('--outpath', default=None,
                         help='Root path for output (nc/ and csv/ created as '

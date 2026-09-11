@@ -79,8 +79,11 @@ def build_parser():
                         help=f'Fresh water density in kg/m3 '
                              f'(default: {DEFAULT_RHOF})')
     parser.add_argument('--modelpath', default=None,
-                        help='Root for model output of one region; params.nc '
-                             'is written to <modelpath>/<group>/<model>/ '
+                        help='The ice sheet directory of the model tree, '
+                             'e.g. Models/AIS, which holds a folder per '
+                             'group. Not the model\'s own directory: '
+                             'params.nc is written to '
+                             'Models/AIS/<group>/<model>/params.nc '
                              '(default: ./Models/<region>)')
     return parser
 
