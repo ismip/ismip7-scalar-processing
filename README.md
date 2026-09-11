@@ -9,9 +9,14 @@ basin. Covers Antarctica (AIS) and Greenland (GrIS).
 
 ## Install and run
 
+The package is not on conda-forge yet, so install from a checkout:
+
 ```bash
-conda create -n ismip7-scalars -c conda-forge ismip7-scalars
+git clone https://github.com/ismip/ismip7-scalar-processing.git
+cd ismip7-scalar-processing
+conda env create -f ismip7_scalars_env.yml
 conda activate ismip7-scalars
+python -m pip install --no-deps --no-build-isolation .
 ismip7-scalars --region AIS \
     --group VUW --model PISM1 --modelid m001 \
     --esm CESM2-WACCM --forcingid f001 \

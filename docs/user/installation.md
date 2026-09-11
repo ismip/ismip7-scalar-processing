@@ -1,15 +1,21 @@
 # Installation
 
-## From conda-forge
+## From a checkout
+
+The package is not on conda-forge yet. Until it is, install from a checkout
+of the repository:
 
 ```bash
-conda create -n ismip7-scalars -c conda-forge ismip7-scalars
+git clone https://github.com/ismip/ismip7-scalar-processing.git
+cd ismip7-scalar-processing
+conda env create -f ismip7_scalars_env.yml
 conda activate ismip7-scalars
+python -m pip install --no-deps --no-build-isolation .
 ismip7-scalars --version
 ```
 
-This is the supported way to install, and the one to use unless you are
-working on the tools themselves. Everything needed comes with it.
+The last line should print a version. Once a conda-forge package exists,
+this page will say `conda create` instead.
 
 ## What it installs
 
@@ -33,8 +39,7 @@ several environments are on the path at once.
 
 ## Dependencies
 
-Installing from conda-forge brings these along. They matter if you install
-from source ({doc}`../dev/source-install`):
+ismip7_scalars_env.yml installs these:
 
 | Package | Versions | Reason for the bounds |
 |---|---|---|

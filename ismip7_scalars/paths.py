@@ -56,8 +56,7 @@ def _materialise(package: str) -> Path:
         raise MissingDataError(
             f'{package} is not installed.  The ISMIP7 data request is read '
             f'from the isschecker package rather than copied into this one; '
-            f'install ismip7-scalars from conda-forge, which brings it, or '
-            f'add isschecker to your environment.') from exc
+            f'add isschecker to your conda environment.') from exc
     stack = ExitStack()
     atexit.register(stack.close)
     return Path(stack.enter_context(resources.as_file(traversable)))

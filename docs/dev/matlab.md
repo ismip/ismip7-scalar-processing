@@ -6,7 +6,7 @@ works in MATLAB, and because two independent implementations agreeing to
 machine precision is a stronger statement about the processing than either one
 passing its own tests.
 
-It is not installed by conda-forge; run it from a checkout.
+The pip install does not install it; run it from the checkout.
 
 ```bash
 cd matlab
