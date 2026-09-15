@@ -1,110 +1,138 @@
 # File and directory conventions
 
-The processing finds its inputs by name. Nothing is inferred from the contents
-of a file, so a file in the wrong place or with the wrong name is a file that
-does not exist as far as the tools are concerned -- which is deliberate: a run
-that quietly processed a neighbouring experiment would be far worse than one
-that stopped.
+The tools find their inputs by name and never look inside a file to decide
+what it is. A file with the wrong name or in the wrong place is invisible to
+them. That is on purpose: stopping is better than quietly processing a
+neighbouring experiment.
+
+## Directory layout
+
+The same layout as an ISMIP7 submission. For the VUW group's PISM1 model:
+
+```
+Models/AIS/                    <-- --modelpath
+└── VUW/                       <-- group
+    └── PISM1/                 <-- model
+        ├── params.nc
+        ├── CORE/              <-- experiment group
+        │   ├── C001/          <-- configid
+        │   └── C007/
+        └── ESM/
+            └── E001/
+```
+
+The model path is the ice sheet directory, one level above the groups. The
+tools add the group, model, experiment group and configid to it. Passing your
+model's own directory, Models/AIS/VUW/PISM1, doubles them up: the tools then
+look under Models/AIS/VUW/PISM1/VUW/PISM1.
+
+The experiment group is CORE, ESM or PPE and follows from the first letter of
+the configid. `--exp-group` overrides that, for both input and output.
+
+The default model path is Models/AIS or Models/GrIS and the default data path
+is Data/AIS or Data/GrIS, relative to wherever you run the command.
 
 ## Model output filenames
 
-Ten underscore-separated fields:
-
-```
-{var}_{region}_{group}_{model}_{modelid}_{ESM}_{forcingid}_{experiment}_{configid}_{startyear}-{endyear}.nc
-```
+Ten fields separated by underscores. For example:
 
 ```
 lithk_GrIS_NORCE_CISM16x-MAR312-p50_m001_CESM2-WACCM_f001_ssp585_E001_2015-2300.nc
 ```
 
-| Field | Meaning | Example |
-|-------|---------|---------|
-| `{var}` | Variable name | `lithk` |
-| `{region}` | Ice sheet | `AIS`, `GrIS` |
-| `{group}` | Submitting institution | `NORCE` |
-| `{model}` | Ice sheet model | `CISM16x-MAR312-p50` |
-| `{modelid}` | ISM member ID | `m001` |
-| `{ESM}` | Climate forcing model | `CESM2-WACCM` |
-| `{forcingid}` | Forcing realization | `f001` |
-| `{experiment}` | Scenario | `historical`, `ssp126`, `ctrl` |
-| `{configid}` | Configuration counter | `C007`, `E001`, `P042` |
-| `{startyear}-{endyear}` | Nominal simulation years | `2015-2300` |
+| Field | Example | Meaning |
+|---|---|---|
+| variable | lithk | |
+| region | GrIS | AIS or GrIS |
+| group | NORCE | submitting institution |
+| model | CISM16x-MAR312-p50 | ice sheet model |
+| model ID | m001 | ISM member |
+| ESM | CESM2-WACCM | climate forcing model |
+| forcing ID | f001 | forcing realization |
+| experiment | ssp585 | scenario; also historical or ctrl |
+| configid | E001 | configuration counter; C for CORE, E for ESM, P for PPE |
+| years | 2015-2300 | nominal simulation years |
 
-Anything after the configid -- the year range, an optional trailing `_c` -- is
-ignored when a file is looked up, so the year range does not have to be known
-in advance.
+The year range does not need to be known in advance: anything after the
+configid is ignored when a file is looked up.
 
 ```{warning}
-**No field may contain an underscore.** The fields are addressed by position,
-so a group or model name with an underscore in it shifts every later field
-along by one. A `lithk_AIS_MY_GROUP_...` file is read as though `MY` were the
-group and `GROUP` the model. Use hyphens.
+**No underscores inside a field.** Fields are counted by position, so a group
+called MY_GROUP shifts everything after it by one: the tools read MY as the
+group and GROUP as the model. Use hyphens.
 ```
 
-Exactly one file must match a lookup. Two files that differ only in their year
-range -- a truncated run left beside the full one, say -- make the directory
-ambiguous, and the run stops with a `SKIP:` rather than picking one.
-
-## Directory layout
-
-```
-{modelpath}/{group}/{model}/{exp_group}/{configid}/
-```
-
-`{exp_group}` is `CORE`, `ESM` or `PPE`, and normally follows from the configid
-prefix: `C` → `CORE`, `E` → `ESM`, `P` → `PPE`. `--exp-group` overrides it, for
-both input and output.
-
-The default `{modelpath}` is `./Models/{region}` and the default `{datapath}` is
-`./Data/{region}`, both relative to wherever you run the command.
+Exactly one file must match. Two files that differ only in their year range,
+say a truncated run left beside the full one, stop the run with a SKIP rather
+than have it guess.
 
 ## Time encoding
 
-ST (state) variables -- `lithk`, `topg`, `sftgrf`, `sftflf` -- carry timestamps
-at **Jan 1 of year N+1** for nominal simulation year N. FL (flux) variables --
-`acabf`, `licalvf` and the rest -- carry timestamps at **Jul 1 of year N**, with
-time bounds.
+State variables (lithk, topg, sftgrf, sftflf) are stamped Jan 1 of the
+*following* year: the value for 2015 carries the timestamp 2016-01-01. Flux
+variables (acabf, licalvf and the rest) are stamped Jul 1 of the year itself,
+with time bounds.
 
-The nominal year is what appears in filenames and in the CSV column headers.
-So a file named `..._2015-2300.nc` holds ST timestamps from Jan 1 2016 to
-Jan 1 2301, and the output written from it is named for 2015-2300 too.
+Filenames and CSV column headers use the nominal year. A file named
+..._2015-2300.nc holds state timestamps from 2016-01-01 to 2301-01-01, and the
+output made from it is also named 2015-2300.
 
 ```{note}
-`--refyear` is the one place a *timestamp* year is meant rather than a nominal
-one: `--refyear 2050` selects the timestep stamped Jan 1 2050, which is nominal
-year 2049. See {doc}`running`.
+`--refyear` is the one option that takes a timestamp year rather than a
+nominal one. `--refyear 2050` selects the step stamped 2050-01-01, which is
+the end of nominal year 2049. See {doc}`running`.
 ```
 
 ## Generic data files
 
-Named for the region and the resolution, which is detected from the model grid
-and written as two digits of kilometres (`16` → `16000m`):
+Area factors and masks, named for the region and the grid resolution in
+metres. At 16 km for Antarctica:
 
-| Role | Antarctica | Greenland |
-|---|---|---|
-| Area factors | `af2_AIS_{res}000m_v1.nc` | `af2_GrIS_{res}000m_v1.nc` |
-| Ice sheet mask | `maxmask1_AIS_{res}000m_v0.nc` | `maxmask1_GrIS_{res}000m_v1.nc` |
-| Glaciers and ice caps | `iaf2_GIC_AIS_{res}000m_v0.nc` | `iaf2_GIC_GrIS_{res}000m_v0.nc` |
-| Basins | `basins_regions_AIS_Rignot_extended_{res}000m_v1.nc` | `basins_GrIS_Mouginot_extended_{res}000m_v1.nc` |
+```
+Data/AIS/
+├── af2_AIS_16000m_v1.nc                               area factors
+├── maxmask1_AIS_16000m_v0.nc                          ice sheet mask
+├── iaf2_GIC_AIS_16000m_v0.nc                          glaciers and ice caps
+└── basins_regions_AIS_Rignot_extended_16000m_v1.nc    basins (only with --basins)
+```
 
-The basin file is only read with `--basins`. All of them are on the ISMIP
-Globus server under `Output-Processing`.
+and for Greenland:
+
+```
+Data/GrIS/
+├── af2_GrIS_16000m_v1.nc
+├── maxmask1_GrIS_16000m_v1.nc
+├── iaf2_GIC_GrIS_16000m_v0.nc
+└── basins_GrIS_Mouginot_extended_16000m_v1.nc
+```
+
+The resolution is read from the model grid, so the names have to match it.
+All of these are on the ISMIP Globus server under Output-Processing.
 
 ## params.nc
 
-`{params-path}/{group}/{model}/params.nc`, holding scalar variables `rhoi`,
-`rhow` and `rhof` -- the ice, ocean water and fresh water densities the model
-was integrated with. `--params-path` defaults to `--modelpath`; set it
-separately when the model tree is read-only.
-
-Write one with `ismip7-scalars-set-params`:
+One per model, in the model's directory: Models/AIS/VUW/PISM1/params.nc. It
+holds three numbers, the ice, sea-water and fresh-water densities the model
+was run with, as variables rhoi, rhow and rhof. Write it with:
 
 ```bash
 ismip7-scalars-set-params --region AIS --group VUW --model PISM1 \
-    --rhoi 910 --rhow 1028 --rhof 1000 --modelpath ./Models/AIS
+    --rhoi 910 --rhow 1028 --rhof 1000 --modelpath Models/AIS
 ```
 
-The file may also carry an `oarea`, but the processing does not read it: every
-submission is normalised by the same ocean area, 3.625 × 10¹⁴ m² (Gregory et
-al., 2019), so that the sea-level contributions are comparable across models.
+If the model tree is read-only, a submissions tree on NIRD for instance, keep
+params.nc in a tree of your own with the same group and model folders. Write
+it there by giving that tree to `ismip7-scalars-set-params` as
+`--modelpath`, and then give the same tree to `ismip7-scalars` as
+`--params-path`:
+
+```bash
+ismip7-scalars-set-params --region AIS --group VUW --model PISM1 \
+    --rhoi 910 --rhow 1028 --rhof 1000 --modelpath /home/me/params/AIS
+ismip7-scalars --region AIS --group VUW --model PISM1 ... \
+    --modelpath /nird/.../ISMIP7_submissions/AIS --params-path /home/me/params/AIS
+```
+
+The file may also hold an ocean area, but it is not used. Every submission is
+normalised by the same 3.625 × 10¹⁴ m² (Gregory et al., 2019) so that models
+are comparable.

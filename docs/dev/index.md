@@ -1,8 +1,8 @@
 # Developer guide
 
 Guidance for contributing to the package and for maintaining its releases. If
-you only want to process a submission, you do not need any of this -- install
-from conda-forge as described in {doc}`../getting-started`.
+you only want to process a submission, you do not need any of this -- see
+{doc}`../getting-started`.
 
 The repository is laid out like this:
 

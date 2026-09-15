@@ -1,8 +1,8 @@
 # Installing from source
 
 You only need this to work *on* the package -- to test a change that has not
-been released yet, or to develop one. To process a submission, install from
-conda-forge instead (see {doc}`../user/installation`).
+been released yet, or to develop one. Until the package is on conda-forge,
+users install the same way minus the `-e` ({doc}`../user/installation`).
 
 Create the conda environment and install the package into it:
 
@@ -13,13 +13,8 @@ python -m pip install --no-deps --no-build-isolation -e .
 ```
 
 Note that `ismip7_scalars_env.yml` installs the dependencies but not the
-package itself, so the environment it creates is not the one conda-forge gives
-you: an `ismip7-scalars` environment made this way holds no `ismip7-scalars`
-package until the `pip install` runs. If you already have an environment of
-that name from conda-forge, `conda env create` will refuse to create another
-over it; give this one a different name with
-`conda env create -n ismip7-scalars-dev -f ismip7_scalars_env.yml` and keep
-both.
+package itself: an `ismip7-scalars` environment made this way holds no
+`ismip7-scalars` package until the `pip install` runs.
 
 ```{warning}
 **Use those pip flags.** All dependencies come from conda-forge, and a plain

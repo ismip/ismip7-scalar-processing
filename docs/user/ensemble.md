@@ -1,17 +1,12 @@
 # Processing a whole ensemble
 
-```bash
-ismip7-scalars-ensemble --region GrIS --modelpath <submissions root> [options]
-```
+`ismip7-scalars-ensemble` walks a submission tree, finds every experiment it
+can process, pairs each projection with its historical run, and runs
+`ismip7-scalars` once per experiment. Each run is a separate process, so one
+bad submission cannot take the batch down.
 
-`ismip7-scalars-ensemble` walks a submissions root, works out for each
-`{group}/{model}/{exp_group}/{configid}` directory whether it is a processable
-unit and which historical run it pairs with, and runs `ismip7-scalars` once per
-unit. Each unit runs in a subprocess of its own, so one bad submission cannot
-take the batch down with it.
-
-Point `--modelpath` at the region directory of the submissions tree -- note the
-doubled region in the NIRD path:
+Point `--modelpath` at the ice sheet directory of the submission tree, the one
+holding a folder per group. On NIRD that is the *second* GrIS in the path:
 
 ```bash
 ismip7-scalars-ensemble --region GrIS \
@@ -21,53 +16,51 @@ ismip7-scalars-ensemble --region GrIS \
   --dry-run
 ```
 
-`--dry-run` prints the command planned for each unit and runs none of them.
-Start there.
+`--dry-run` prints the command planned for each experiment and runs none of
+them. Start there.
 
-## What counts as a unit
+## What gets processed
 
-A directory four levels below the root, whose third and fourth levels are
-`{CORE|ESM|PPE}` and `{[CEP]NNN}`, holding a `lithk` file whose `region`,
-`group`, `model` and `configid` fields match the directory it is in.
+An experiment directory four levels below the model path, for example
+NORCE/CISM16x-MAR312-p50/CORE/C001, whose lithk file names the same region,
+group, model and configid as the directory it sits in.
 
-Everything else is logged and skipped: ad-hoc directories (`old_CORE`,
-`CORE_old`), filenames that break the ten-field convention, a `lithk` file that
-says it belongs to a different configid than the directory it sits in. The
-point is that a mislabelled file is never silently processed as though it were
-something else.
+Anything else is logged and skipped: ad-hoc directories like old_CORE,
+filenames that break the ten-field convention, a file that says it belongs to
+a different configid than its directory. A mislabelled file is never
+processed as though it were something else.
 
 ## How projections are paired with a historical run
 
-The bundled CORE experiment table (`ISMIP7_experiments_CORE.csv`) gives each
-configid its scenario and forcing ESM. A projection pairs with the historical
-run driven by the same ESM -- CESM with `C001`, MRI with `C002`. Experiments
-whose scenario is `historical` or `ctrl` are their own reference and pair with
-themselves.
+The CORE experiment table bundled with the package gives each configid its
+scenario and forcing ESM. A projection is paired with the historical run
+driven by the same ESM: CESM projections with C001, MRI projections with
+C002. Historical and ctrl experiments are their own reference.
 
-For a configid the table does not list -- a future ESM or PPE experiment -- the
-driver falls back on the numbering convention, pairing an even configid with the
-odd one below it. Where even that gives no candidate the unit is skipped with a
-reason rather than paired against itself, because a projection measured against
-its own last timestep would produce a plausible-looking series that is entirely
-wrong. Pair those by hand with `ismip7-scalars --hist-configid`.
+For a configid the table does not know, such as a future ESM or PPE
+experiment, the driver pairs an even configid with the odd one below it. If
+that gives nothing, the experiment is skipped with a reason rather than
+measured against itself, which would produce a plausible-looking series that
+is wrong. Pair those by hand with `ismip7-scalars --hist-configid`.
 
 ## Options
 
 | Option | Meaning |
 |---|---|
-| `--region {AIS,GrIS}` | Required |
-| `--modelpath` | Submissions root. Required |
-| `--dry-run` | Print the planned commands, run nothing |
-| `--exp-group` | Only this experiment group |
-| `--groups`, `--models`, `--configids` | Comma-separated filters |
-| `--datapath`, `--params-path`, `--outpath`, `--histout`, `--basins` | Passed through to each unit |
-| `--core-csv` | Use a different experiment table |
-| `--python` | Interpreter to run each unit with |
-| `--log-dir` | Where the logs go (default `./Output/logs`) |
+| `--region` | AIS or GrIS; required |
+| `--modelpath` | ice sheet directory of the submission tree; required |
+| `--dry-run` | print the planned commands, run nothing |
+| `--exp-group` | only this experiment group |
+| `--groups`, `--models`, `--configids` | comma-separated filters |
+| `--datapath`, `--params-path`, `--outpath`, `--histout`, `--basins` | passed through to each run |
+| `--core-csv` | use a different experiment table |
+| `--python` | interpreter to run each experiment with |
+| `--log-dir` | where the logs go; default Output/logs |
 
 ## Logs
 
-One log per unit, plus a run summary naming every unit and what happened to it:
+One log per experiment, plus a summary naming every experiment and what
+happened to it:
 
 ```
 ISMIP7 ensemble run -- GrIS -- 20260301T142530
@@ -80,9 +73,6 @@ units: 24   ok: 19   skipped: 4   failed: 1
   ...
 ```
 
-A unit that skipped itself over a missing input reports the reason it gave,
-lifted out of its own log, rather than a bare exit code.
-
-The driver itself exits 0 unless it hits a driver-level error: a unit that could
-not be processed is a line in the summary, not a failure of the batch. Read the
-summary.
+The driver exits 0 unless something went wrong with the driver itself. An
+experiment that could not be processed is a line in the summary, not a failure
+of the batch, so read the summary.

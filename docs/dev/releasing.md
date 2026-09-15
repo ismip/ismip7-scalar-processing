@@ -5,9 +5,9 @@ This page is for maintainers -- those with write access to
 you are contributing from a fork, nothing here is yours to do; open the pull
 request and a maintainer will fold it into the next release.
 
-Modelers get the tools from conda-forge, and conda-forge builds from a tag.
-Anything on `main` that has not been tagged therefore does not exist as far as
-they are concerned.
+Once the feedstock is live, modelers get the tools from conda-forge, and
+conda-forge builds from a tag. Anything on `main` that has not been tagged
+therefore does not exist as far as they are concerned.
 
 **So tag a release whenever a change reaches `main` that a user would notice.**
 That is deliberately a low bar: a change to any computed number, a new or

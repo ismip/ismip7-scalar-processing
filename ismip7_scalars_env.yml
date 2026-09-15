@@ -1,9 +1,8 @@
 # Development environment: everything needed to work on the scalar processing
 # -- its dependencies, the test suite's, and the documentation build's -- but
 # not the package itself, which is then pip-installed from a source checkout
-# (see "Installing from source" in the developer guide).  To *use* the tools,
-# install from conda-forge instead -- `conda create -n ismip7-scalars -c
-# conda-forge ismip7-scalars` -- which brings the runtime packages with it.
+# (see "Installing from source" in the developer guide).  Until the package
+# is on conda-forge, users install the same way.
 name: ismip7-scalars
 channels:
   - conda-forge
