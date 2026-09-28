@@ -120,5 +120,7 @@ is *not* your model's own directory; see {doc}`file-conventions`. Use
 Exit 2 lets {doc}`ensemble` log a unit it could not process and carry on.
 Some inputs are only needed for part of the output: without sftgrf and sftflf
 the state scalars are skipped and everything else is still written, and each
-flux variable is skipped on its own if its file is absent. Those are
-warnings, and the run still exits 0.
+flux variable is skipped on its own if its file is absent. Without base, the
+volume above flotation is computed from topg instead, which undercounts it
+where the grounding line or ice front crosses a cell (see {doc}`slc-methods`).
+Those are warnings, and the run still exits 0.

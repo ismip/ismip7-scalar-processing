@@ -555,6 +555,96 @@ class TestMissingInput:
 
 
 # ---------------------------------------------------------------------------
+# Volume above flotation from the ice base
+
+
+class TestIceBase:
+    """slvaf, slg20 and limnsw take the ice base; see ``slc_vaf.get_vaf``."""
+
+    def _run(self, root, outpath, variables, capsys):
+        """Thin 1200 m of ice by 150 m a year, so that cells go from grounded
+        to floating.  Returns the output path and what the run printed."""
+        datapath = synthetic.write_data_files(os.path.join(root, 'Data',
+                                                           'AIS'))
+        modelpath = os.path.join(root, 'Models', 'AIS')
+        synthetic.write_params(modelpath)
+        for experiment, configid, start, initial in [
+                ('historical', 'C001', 2010, 1200.0),
+                ('ssp585', 'C007', 2013, 750.0)]:
+            synthetic.write_experiment(
+                modelpath, experiment=experiment, configid=configid,
+                start_year=start, nyears=3, initial=initial,
+                thinning_per_step=150.0, variables=variables)
+        capsys.readouterr()
+        assert main(BASE_ARGS + ['--datapath', datapath, '--modelpath',
+                                 modelpath, '--outpath', str(outpath)]) == 0
+        return outpath, capsys.readouterr().out
+
+    def test_without_base_it_falls_back_to_topg(self, tmp_path, capsys):
+        variables = ('lithk', 'topg', 'sftgrf', 'sftflf')
+        outpath, out = self._run(str(tmp_path / 'sub'), tmp_path / 'out',
+                                 variables, capsys)
+        assert 'base missing for exp and hist' in out
+        assert glob.glob(os.path.join(nc_dir(outpath), 'slvaf_*.nc'))
+
+    def test_base_and_topg_agree_where_no_cell_is_partly_floating(
+            self, tmp_path, capsys):
+        """At a point the ice base and the bed give the same VAF, so a
+        submission without partly floating cells gets the same answer."""
+        with_base, out = self._run(
+            str(tmp_path / 'a'), tmp_path / 'out_a',
+            ('lithk', 'topg', 'base', 'sftgrf', 'sftflf'), capsys)
+        assert 'base missing' not in out
+        without_base, _ = self._run(
+            str(tmp_path / 'b'), tmp_path / 'out_b',
+            ('lithk', 'topg', 'sftgrf', 'sftflf'), capsys)
+        for varname in ('slvaf', 'slg20', 'sla20', 'limnsw'):
+            a, _ = read_series(with_base, varname)
+            b, _ = read_series(without_base, varname)
+            np.testing.assert_allclose(a, b, rtol=1e-10, atol=1e-12,
+                                       err_msg=varname)
+
+    def test_a_partly_floating_cell_is_measured_by_its_ice_base(
+            self, tmp_path, capsys):
+        """Raise the ice base of one grounded cell in the last year, as a
+        shelf over half of it would.  VAF gains exactly what the new base
+        implies, and A2020, which takes the bed, does not move."""
+        variables = ('lithk', 'topg', 'base', 'sftgrf', 'sftflf')
+        root = str(tmp_path / 'sub')
+        before, _ = self._run(root, tmp_path / 'before', variables, capsys)
+
+        exppath = os.path.join(root, 'Models', 'AIS', 'ISMIP7', 'SYNTH1',
+                               'CORE', 'C007')
+        base_file, = glob.glob(os.path.join(exppath, 'base_*.nc'))
+        # By the last year, column 4 is 450 m of ice grounded on a -367 m bed.
+        j, i, new_base = 0, 4, -200.0
+        with nc.Dataset(base_file, 'a') as ds:
+            old_base = float(ds.variables['base'][-1, j, i])
+            ds.variables['base'][-1, j, i] = new_base
+
+        datapath = os.path.join(root, 'Data', 'AIS')
+        modelpath = os.path.join(root, 'Models', 'AIS')
+        after = tmp_path / 'after'
+        assert main(BASE_ARGS + ['--datapath', datapath, '--modelpath',
+                                 modelpath, '--outpath', str(after)]) == 0
+
+        rhoi, rhosw, rhofw = 917.0, 1027.0, 1000.0
+        dvaf = (new_base - old_base) * rhosw / rhoi * synthetic.DX ** 2
+        expected = {
+            'limnsw': dvaf * rhoi,
+            'slvaf': -dvaf * rhoi / rhofw / 3.625e14,
+            'slg20': -dvaf * rhoi / rhosw / 3.625e14,
+            'sla20': 0.0,
+        }
+        for varname, change in expected.items():
+            a, _ = read_series(before, varname)
+            b, _ = read_series(after, varname)
+            assert b[:-1] == pytest.approx(a[:-1], rel=1e-12), varname
+            assert b[-1] - a[-1] == pytest.approx(
+                change, rel=1e-9, abs=1e-15), varname
+
+
+# ---------------------------------------------------------------------------
 # The historical run processed on its own
 
 

@@ -172,8 +172,10 @@ class Geometry:
 
     lithk: np.ndarray
     topg: np.ndarray
+    base: np.ndarray
     lithk_ref: np.ndarray
     topg_ref: np.ndarray
+    base_ref: np.ndarray
     time_model: np.ndarray
     time_units: str
     time_long_name: str
@@ -184,6 +186,7 @@ class Geometry:
     ref_idx_exp: int | None = None
     lithk_hist: np.ndarray | None = None
     topg_hist: np.ndarray | None = None
+    base_hist: np.ndarray | None = None
     hist_n_out: int = 0
     hist_start: int = 0
     sftgrf: np.ndarray | None = None
@@ -444,7 +447,7 @@ def resolve_hist_n_out(histout, n_hist, exp_is_hist):
 
 
 def load_geometry(settings):
-    """Load ``lithk`` and ``topg`` for the projection and historical runs.
+    """Load ``lithk``, ``topg`` and ``base`` for the projection and hist runs.
 
     Also resolves the reference state the SLC methods measure against, the
     historical timesteps to prepend, and the shared output time axis.
@@ -510,27 +513,27 @@ def load_geometry(settings):
         lithk_hist = ds.variables['lithk'][:, :, :] if need_hist_arrays \
             else None
 
-    topg_hist_file = find_model_file(
-        settings.histpath, 'topg', settings.region, settings.group,
-        settings.model, settings.modelid, settings.esm, settings.forcingid,
-        settings.hist, settings.hist_configid, required=False)
-    if topg_hist_file is None:
+    hist_topg = _load_hist_field(settings, 'topg', ref_idx, need_hist_arrays)
+    if hist_topg is None:
         raise MissingInput(f'missing topg for hist in {settings.histpath}')
-    with nc.Dataset(topg_hist_file, 'r') as ds:
-        topg_ref = ds.variables['topg'][ref_idx, :, :]
-        topg_hist = ds.variables['topg'][:, :, :] if need_hist_arrays else None
+    topg_ref, topg_hist = hist_topg
+
+    base, base_ref, base_hist = _load_base(
+        settings, topg, topg_ref, topg_hist, ref_idx, need_hist_arrays)
 
     if exp_is_hist and FLG_A20_CUMUL:
         # Same file: reuse the arrays already in memory.
         lithk_hist = lithk
         topg_hist = topg
+        base_hist = base
 
     geom = Geometry(
-        lithk=lithk, topg=topg, lithk_ref=lithk_ref, topg_ref=topg_ref,
+        lithk=lithk, topg=topg, base=base, lithk_ref=lithk_ref,
+        topg_ref=topg_ref, base_ref=base_ref,
         time_model=time_model, time_units=time_units,
         time_long_name=time_long_name, time_calendar=time_calendar,
         time_hist=time_hist, n_hist=n_hist, ref_idx=ref_idx,
-        lithk_hist=lithk_hist, topg_hist=topg_hist,
+        lithk_hist=lithk_hist, topg_hist=topg_hist, base_hist=base_hist,
         hist_n_out=hist_n_out, hist_start=hist_start)
 
     if ref_in_exp:
@@ -547,10 +550,51 @@ def load_geometry(settings):
         geom.ref_idx_exp = int(idx[-1])
         geom.lithk_ref = lithk[geom.ref_idx_exp, :, :]
         geom.topg_ref = topg[geom.ref_idx_exp, :, :]
+        geom.base_ref = geom.base[geom.ref_idx_exp, :, :]
 
     _load_st_masks(settings, geom, exp_is_hist)
     _build_time_axis(geom)
     return geom
+
+
+def _load_hist_field(settings, var, ref_idx, need_all):
+    """Load one historical field at the reference timestep, and whole if asked.
+
+    Returns ``(at_ref, whole)``, where ``whole`` is ``None`` unless
+    ``need_all``, or ``None`` when the file is absent.
+    """
+    path = find_model_file(
+        settings.histpath, var, settings.region, settings.group,
+        settings.model, settings.modelid, settings.esm, settings.forcingid,
+        settings.hist, settings.hist_configid, required=False)
+    if path is None:
+        return None
+    with nc.Dataset(path, 'r') as ds:
+        at_ref = ds.variables[var][ref_idx, :, :]
+        whole = ds.variables[var][:, :, :] if need_all else None
+    return at_ref, whole
+
+
+def _load_base(settings, topg, topg_ref, topg_hist, ref_idx, need_all):
+    """Load ``base``, which the volume above flotation is computed from.
+
+    Returns ``(base, base_ref, base_hist)``.  A submission missing it, from
+    either run, falls back to ``topg`` for both, so that the reference and the
+    projection are measured the same way.  See ``slc_vaf.get_vaf`` for why the
+    ice base is the better choice.
+    """
+    base = _load_field(settings, settings.exppath, 'base', settings.exp,
+                       settings.configid)
+    hist_base = _load_hist_field(settings, 'base', ref_idx, need_all)
+    if base is not None and hist_base is not None:
+        return (base,) + hist_base
+
+    missing = [name for name, field in (('exp', base), ('hist', hist_base))
+               if field is None]
+    print(f'WARNING: base missing for {" and ".join(missing)} -- computing '
+          f'volume above flotation (slvaf, slg20, limnsw) from topg, which '
+          f'undercounts it in cells the grounding line or ice front crosses')
+    return topg, topg_ref, topg_hist
 
 
 def _load_st_masks(settings, geom, exp_is_hist):
@@ -615,10 +659,14 @@ def compute_slc_series(geom, c, region_mask, af2, maxmask1, gic_mask, area_m2,
     """The three SLC time series for one mask and one GIC mode.
 
     Returns ``(slvaf, slg20, sla20)``, each covering the prepended historical
-    timesteps followed by the projection.
+    timesteps followed by the projection.  Volume above flotation is computed
+    from the ice base ``Z``, for the reason given at ``slc_vaf.get_vaf``.
+    A2020 still takes the bed: its grounded and ocean masks are what go wrong
+    in a partly floating cell, and the ice base does not fix them.
     """
     H0 = geom.lithk_ref * maxmask1 * gic_mask
     B0 = geom.topg_ref
+    Z0 = geom.base_ref
     # TODO clarify if S0=0 is correct for all models
     S0 = geom.topg_ref * 0.0  # sea level fixed to 0
 
@@ -632,8 +680,10 @@ def compute_slc_series(geom, c, region_mask, af2, maxmask1, gic_mask, area_m2,
         for n in range(geom.hist_start, geom.n_hist):
             H = geom.lithk_hist[n, :, :] * maxmask1 * gic_mask
             B = geom.topg_hist[n, :, :]
-            vaf_hist.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
-            g20_hist.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
+            Z = geom.base_hist[n, :, :]
+            vaf_hist.append(slc_vaf.get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c))
+            g20_hist.append(slc_G2020.get_slc_G2020(
+                H0, H, B0, B, A, c, base0=Z0, base=Z))
             if not FLG_A20_CUMUL:
                 a20_hist.append(
                     slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
@@ -642,8 +692,10 @@ def compute_slc_series(geom, c, region_mask, af2, maxmask1, gic_mask, area_m2,
     for n in range(geom.nt):
         H = geom.lithk[n, :, :] * maxmask1 * gic_mask
         B = geom.topg[n, :, :]
-        vaf_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
-        g20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
+        Z = geom.base[n, :, :]
+        vaf_list.append(slc_vaf.get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c))
+        g20_list.append(slc_G2020.get_slc_G2020(
+            H0, H, B0, B, A, c, base0=Z0, base=Z))
 
     # ---- A2020, method-dependent ----
     if not FLG_A20_CUMUL:
@@ -713,11 +765,12 @@ def compute_st_series(geom, c, region_mask, af2, maxmask1, area_m2):
 
     values = {name: [] for name in ST_SCALAR_NAMES}
 
-    def accumulate(lithk, topg, sftgrf, sftflf, indices):
+    def accumulate(lithk, base, sftgrf, sftflf, indices):
         for n in indices:
             H = lithk[n, :, :] * maxmask1
-            B = topg[n, :, :]
-            hf = np.maximum(-B, 0) * c.RHOSW / c.RHOI
+            # The ice base, not the bed, as for slvaf (see slc_vaf.get_vaf).
+            Z = base[n, :, :]
+            hf = np.maximum(-Z, 0) * c.RHOSW / c.RHOI
             values['lim'].append(np.sum(H * A) * c.RHOI)
             values['limnsw'].append(
                 np.sum(np.maximum(H - hf, 0) * A) * c.RHOI)
@@ -725,9 +778,9 @@ def compute_st_series(geom, c, region_mask, af2, maxmask1, area_m2):
             values['iareafl'].append(np.sum(sftflf[n, :, :] * A))
 
     if geom.hist_n_out > 0:
-        accumulate(geom.lithk_hist, geom.topg_hist, geom.sftgrf_hist,
+        accumulate(geom.lithk_hist, geom.base_hist, geom.sftgrf_hist,
                    geom.sftflf_hist, range(geom.hist_start, geom.n_hist))
-    accumulate(geom.lithk, geom.topg, geom.sftgrf, geom.sftflf,
+    accumulate(geom.lithk, geom.base, geom.sftgrf, geom.sftflf,
                range(geom.nt))
 
     return {name: np.asarray(vals) for name, vals in values.items()}

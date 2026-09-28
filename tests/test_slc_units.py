@@ -254,6 +254,93 @@ class TestG2020AgainstThePublishedForm:
 
 
 # ---------------------------------------------------------------------------
+# VAF from the ice base
+
+
+def flowline(c, shelf=300.0):
+    """A fine transect: grounded ice, a shelf, then open water.
+
+    The bed is below sea level throughout.  Coarsened by 8, cell 2 holds the
+    grounding line and cell 5 the ice front.  Returns ``(H, bed, base)``.
+    """
+    bed = np.linspace(-300.0, -700.0, 64)[np.newaxis, :]
+    H = np.zeros_like(bed)
+    H[:, :20] = 1200.0
+    H[:, 20:44] = shelf
+    grounded = H > -bed * c.RHOSW / c.RHOI
+    base = np.where(grounded, bed, -H * c.RHOI / c.RHOSW)
+    return H, bed, base
+
+
+def coarsen(field, n=8):
+    """Cell means over blocks of ``n``, as conservative remapping gives."""
+    return field.reshape(field.shape[0], -1, n).mean(axis=2)
+
+
+class TestVafFromTheIceBase:
+    def test_the_worked_example_from_the_discussion(self):
+        """Half the cell is 1100 m of ice on a -450 m bed, holding 600 m above
+        flotation, and half a 400 m shelf over a -630 m bed.  RHOI/RHOSW is
+        0.9 so the numbers are round."""
+        from types import SimpleNamespace
+        c = SimpleNamespace(RHOI=900.0, RHOSW=1000.0)
+        H, S, A = np.array([[750.0]]), np.array([[0.0]]), np.array([[1.0]])
+        assert slc_vaf.get_vaf(H, np.array([[-405.0]]), S, A, c) == \
+            pytest.approx(300.0)
+        assert slc_vaf.get_vaf(H, np.array([[-540.0]]), S, A, c) == \
+            pytest.approx(150.0)
+
+    def test_base_and_bed_agree_at_a_point(self, c):
+        H, bed, base = flowline(c)
+        S, A = np.zeros_like(H), np.ones_like(H)
+        assert slc_vaf.get_vaf(H, base, S, A, c) == \
+            pytest.approx(slc_vaf.get_vaf(H, bed, S, A, c), rel=1e-12)
+
+    def test_cell_means_of_the_base_give_the_exact_vaf(self, c):
+        H, bed, base = flowline(c)
+        exact = slc_vaf.get_vaf(H, bed, np.zeros_like(H), np.ones_like(H), c)
+        Hc, bedc, basec = coarsen(H), coarsen(bed), coarsen(base)
+        S, A = np.zeros_like(Hc), np.full_like(Hc, 8.0)
+        assert slc_vaf.get_vaf(Hc, basec, S, A, c) == \
+            pytest.approx(exact, rel=1e-12)
+        assert slc_vaf.get_vaf(Hc, bedc, S, A, c) < 0.99 * exact
+
+    def test_thinning_the_shelf_does_not_move_sea_level(self, c):
+        H0, bed, base0 = flowline(c, shelf=300.0)
+        H, _, base = flowline(c, shelf=100.0)
+        H0c, Hc, bedc = coarsen(H0), coarsen(H), coarsen(bed)
+        S, A = np.zeros_like(Hc), np.full_like(Hc, 1e8)
+        assert slc_vaf.get_slc_vaf(H0c, Hc, coarsen(base0), coarsen(base),
+                                   S, S, A, c) == pytest.approx(0.0, abs=1e-15)
+        # The bed counts the water under the shelf against the grounded ice.
+        assert slc_vaf.get_slc_vaf(H0c, Hc, bedc, bedc, S, S, A, c) > 1e-6
+
+    def test_g2020_from_cell_means_matches_the_fine_grid(self, c):
+        H0, bed, base0 = flowline(c, shelf=300.0)
+        H, _, base = flowline(c, shelf=100.0)
+        fine = slc_G2020.get_slc_G2020(H0, H, bed, bed, np.full_like(H, 1e8),
+                                       c)
+        bedc = coarsen(bed)
+        coarse = slc_G2020.get_slc_G2020(
+            coarsen(H0), coarsen(H), bedc, bedc, np.full_like(bedc, 8e8), c,
+            base0=coarsen(base0), base=coarsen(base))
+        assert coarse == pytest.approx(fine, rel=1e-10)
+
+    def test_g2020_potential_ocean_volume_still_takes_the_bed(self, c):
+        """Only the above-flotation term changes; the bed is still what holds
+        the potential ocean volume."""
+        rng = np.random.default_rng(7)
+        H0, H, B0, B, _, A = random_state(rng)
+        Z0 = np.maximum(B0, -H0 * c.RHOI / c.RHOSW)
+        Z = np.maximum(B, -H * c.RHOI / c.RHOSW)
+        total = slc_G2020.get_slc_G2020(H0, H, B0, B, A, c, base0=Z0, base=Z)
+        af = slc_G2020.get_slc_af_owv_G2020(H0, H, Z0, Z, A, c)
+        pov = slc_G2020.get_slc_pov_G2020(B0, B, A, c)
+        den = slc_G2020.get_slc_den_G2020(H0, H, A, c)
+        assert total == pytest.approx(af + pov + den, rel=1e-10)
+
+
+# ---------------------------------------------------------------------------
 # A2020
 
 
