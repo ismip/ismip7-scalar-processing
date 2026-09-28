@@ -58,9 +58,14 @@ def get_slc_den_G2020(H0,H,A,c):
   return slc_den
 
 
-def get_slc_G2020(H0,H,B0,B,A,c):
+def get_slc_G2020(H0,H,B0,B,A,c,base0=None,base=None):
   # eq. 12/15 in https://doi.org/10.5194/tc-14-833-2020
-  slc_af = get_slc_af_owv_G2020(H0,H,B0,B,A,c)
+  # The above-flotation term takes the ice base when one is given, for the
+  # reason explained at slc_vaf.get_vaf.  The potential ocean volume is the
+  # space between the bed and sea level, so it always takes the bed.
+  if base0 is None or base is None:
+    base0, base = B0, B
+  slc_af = get_slc_af_owv_G2020(H0,H,base0,base,A,c)
   slc_pov = get_slc_pov_G2020(B0,B,A,c)
   slc_den = get_slc_den_G2020(H0,H,A,c)
   slc = slc_af + slc_pov + slc_den

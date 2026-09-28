@@ -13,6 +13,15 @@ import numpy as np
 # c.AO = 3.625e14 # m2 (Gregory et al., 2019)
 
 # Vaf assuming B (and S) in an absolute reference frame like in A2020
+#
+# B may be the bed or the ice base.  At a point the two give the same Vaf:
+# they are equal under grounded ice, and Vaf is zero under floating ice and
+# open water either way.  They differ once H and B are cell means.  With the
+# bed, a cell that is part grounded and part floating counts the water under
+# its shelf against its grounded ice, so Vaf falls as the shelf thins.  With
+# the ice base (sea level over open water), Vaf is H + B*RHOSW/RHOI wherever
+# B is below sea level, which is linear, so its cell mean is exact.  The
+# processing therefore passes the ice base.
 def get_vaf(H,B,S,A,c):
   hf  = np.maximum(S-B,0.0)*c.RHOSW/c.RHOI
   hall= np.maximum(H-hf,0.0)

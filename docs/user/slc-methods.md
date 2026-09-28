@@ -15,7 +15,7 @@ it is lost; the rest already displaces its own weight. The volume above
 flotation is converted straight to a fresh-water depth:
 
 ```
-hf   = max(S - B, 0) * ρsw / ρi
+hf   = max(S - Zb, 0) * ρsw / ρi
 Vaf  = Σ max(H - hf, 0) * A
 slc  = -(Vaf - Vaf_ref) / A_ocean * ρi / ρfw
 ```
@@ -23,6 +23,19 @@ slc  = -(Vaf - Vaf_ref) / A_ocean * ρi / ρfw
 Simple, and the most directly comparable with earlier intercomparisons. It
 ignores bedrock motion and the density difference between the ice's fresh
 water and the sea water it displaces.
+
+Zb is the ice base, the model's base variable, not the bed. Under grounded ice
+the two are the same. They differ in a cell that is partly grounded and
+partly floating, where H and Zb are cell means. With the bed, the water under
+the floating part is counted against the grounded ice, so the cell loses
+volume above flotation as its shelf thins, though no grounded ice is lost.
+With the ice base, the cell mean gives the right answer wherever the cell is
+below sea level. The same is true at the ice front, as long as base is at sea
+level over open water.
+
+If base is missing, the bed is used instead and the run prints a warning. The
+state scalar limnsw is the same volume above flotation, as a mass, and is
+computed the same way.
 
 See [Seroussi et al. (2020)](https://doi.org/10.5194/tc-14-3071-2020) and
 [Nowicki et al. (2024)](https://doi.org/10.1029/2024EF004561).
@@ -41,6 +54,10 @@ to the volume-above-flotation term:
 slc = slc_af + slc_pov + slc_den
 ```
 
+The volume above flotation comes from the ice base, as for slvaf. The
+potential ocean volume is the space between the bed and sea level, so it comes
+from the bed.
+
 The implementation folds the geoid height into the bedrock elevation, which
 matches the published equations when sea level is fixed at zero. A second
 function, slc_G2020_publ, restates the paper's equations in its own notation
@@ -53,6 +70,11 @@ absolute frame, with bed and sea level both measured from the same ellipsoid,
 and explicitly accounts for cells that switch between grounded and floating.
 The other two methods only see grounding-line migration through the flotation
 criterion.
+
+Its grounded and ocean masks come from cell means of thickness and bed, so a
+cell the grounding line crosses is treated as all grounded or all floating.
+That gives sla20 the same bias in partly floating cells that slvaf had before
+it used the ice base, and the ice base alone does not remove it.
 
 This method measures the change between two consecutive states rather than the
 departure from a reference, so a time series has to be accumulated. The
