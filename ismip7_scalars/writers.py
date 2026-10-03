@@ -18,8 +18,8 @@ CSV_YEAR_FIRST = 1850
 CSV_YEAR_LAST = 2300
 
 #: Metadata columns that precede the annual columns of an SLC CSV.
-CSV_META_KEYS = ('ice_source', 'region', 'group', 'model', 'model_variant',
-                 'scenario', 'GCM', 'forcingid', 'configid')
+CSV_META_KEYS = ('ice_source', 'region', 'scalar', 'group', 'model',
+                 'model_variant', 'scenario', 'GCM', 'forcingid', 'configid')
 
 
 class TimeAxis:
@@ -100,12 +100,16 @@ def warn_years_out_of_range(nominal_yrs):
     return out_of_range
 
 
-def write_slc_csv(path, meta, nominal_yrs, values):
-    """Write a one-row SLC CSV, creating its directory."""
+def write_slc_csv(path, rows):
+    """Write labeled SLC rows to one CSV, creating its directory.
+
+    Each item in ``rows`` is ``(meta, nominal_yrs, values)``.
+    """
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(csv_header())
-        writer.writerow(csv_row(meta, nominal_yrs, values))
+        for meta, nominal_yrs, values in rows:
+            writer.writerow(csv_row(meta, nominal_yrs, values))
     print('Created file ', path)
     return path

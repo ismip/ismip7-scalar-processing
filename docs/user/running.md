@@ -91,6 +91,20 @@ per-basin values sum to the whole-sheet value.
 `--basins` on also adds the mask name to the whole-sheet filenames; see
 {doc}`output`.
 
+## Output formats
+
+| Option | Effect |
+|---|---|
+| `--csv` | enable SLC CSV output |
+| `--no-csv` | disable SLC CSV output |
+| `--netcdf` | enable NetCDF output for SLC, ST and FL scalars |
+| `--no-netcdf` | disable all NetCDF output |
+
+If omitted, both switches preserve the existing per-scalar defaults: plain SLC
+is written to NetCDF and CSV, GIC-masked SLC to CSV, and ST/FL to NetCDF.
+Explicit `--netcdf` also enables GIC-masked SLC NetCDF. With `--no-netcdf`, ST
+and FL scalars are not written because they have no CSV output.
+
 ## Paths
 
 | Option | Points at | Default |

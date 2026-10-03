@@ -112,11 +112,18 @@ class TestWarnYearsOutOfRange:
 
 
 class TestWriteSlcCsv:
-    def test_two_rows_header_then_data(self, tmp_path, meta):
+    def test_multiple_rows_share_one_header(self, tmp_path, meta):
         path = str(tmp_path / 'out' / 'slvaf_TEST.csv')
-        write_slc_csv(path, meta, [2015, 2016], [1.0, 2.0])
+        rows_to_write = [
+            ({**meta, 'scalar': 'slvaf'}, [2015, 2016], [1.0, 2.0]),
+            ({**meta, 'scalar': 'slg20-gic'}, [2015, 2016], [3.0, 4.0]),
+        ]
+        write_slc_csv(path, rows_to_write)
         with open(path, newline='') as f:
             rows = list(csv.reader(f))
-        assert len(rows) == 2
+        assert len(rows) == 3
         assert rows[0] == csv_header()
+        assert [row[rows[0].index('scalar')] for row in rows[1:]] == [
+            'slvaf', 'slg20-gic']
         assert rows[1][rows[0].index('y2015')] == '1.0'
+        assert rows[2][rows[0].index('y2016')] == '4.0'

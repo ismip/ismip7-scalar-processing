@@ -178,6 +178,10 @@ def build_command(args, unit, core):
         cmd += ['--histout', str(args.histout)]
     if args.basins:
         cmd += ['--basins']
+    if args.csv is not None:
+        cmd += ['--csv' if args.csv else '--no-csv']
+    if args.netcdf is not None:
+        cmd += ['--netcdf' if args.netcdf else '--no-netcdf']
     return cmd, note
 
 
@@ -211,6 +215,12 @@ def build_parser():
                         help='Passed through')
     parser.add_argument('--basins', action='store_true',
                         help='Passed through')
+    parser.add_argument('--csv', action=argparse.BooleanOptionalAction,
+                        default=None,
+                        help='Enable or disable SLC CSV output for each run')
+    parser.add_argument('--netcdf', action=argparse.BooleanOptionalAction,
+                        default=None,
+                        help='Enable or disable NetCDF output for each run')
     parser.add_argument('--dry-run', action='store_true',
                         help='Print planned commands, run nothing')
     parser.add_argument('--core-csv', default=None,

@@ -70,6 +70,26 @@ def default_run(submission, tmp_path):
 
 
 class TestSettings:
+    def test_output_format_options_default_to_existing_switches(self):
+        args = build_parser().parse_args(['--region', 'AIS'])
+        settings = settings_from_args(args)
+        assert settings.csv_enabled is None
+        assert settings.netcdf_enabled is None
+
+    @pytest.mark.parametrize('option,value', [
+        ('--csv', True), ('--no-csv', False),
+        ('--netcdf', True), ('--no-netcdf', False),
+    ])
+    def test_output_format_options_are_independent(self, option, value):
+        args = build_parser().parse_args(['--region', 'AIS', option])
+        settings = settings_from_args(args)
+        if option.endswith('csv'):
+            assert settings.csv_enabled is value
+            assert settings.netcdf_enabled is None
+        else:
+            assert settings.netcdf_enabled is value
+            assert settings.csv_enabled is None
+
     def test_exp_group_defaults_from_the_configid(self):
         args = build_parser().parse_args(['--region', 'AIS', '--configid',
                                           'E001'])
@@ -181,7 +201,7 @@ class TestDefaultRun:
         assert glob.glob(os.path.join(nc_dir(default_run),
                                       'slvaf-gic_*.nc')) == []
         assert len(glob.glob(os.path.join(str(default_run), 'csv',
-                                          'slvaf-gic_*.csv'))) == 1
+                                          'sl_*.csv'))) == 1
 
     def test_whole_sheet_filename_carries_no_mask_name(self, default_run):
         names = [os.path.basename(p)
@@ -285,20 +305,32 @@ class TestOutputMetadata:
 
 
 class TestCsvOutput:
-    def _read(self, outpath, name):
-        matches = glob.glob(os.path.join(str(outpath), 'csv', name))
-        assert len(matches) == 1, f'{name} matched {matches}'
+    def _read(self, outpath):
+        matches = glob.glob(os.path.join(str(outpath), 'csv', 'sl_*.csv'))
+        assert len(matches) == 1, f'sl_*.csv matched {matches}'
         with open(matches[0], newline='') as f:
-            header, row = list(csv.reader(f))
-        return header, row
+            rows = list(csv.reader(f))
+        return rows[0], rows[1:]
 
-    def test_one_header_and_one_row(self, default_run):
-        header, row = self._read(default_run, 'slvaf_*.csv')
-        assert len(header) == len(row)
+    def _record(self, outpath, scalar):
+        header, rows = self._read(outpath)
+        scalar_index = header.index('scalar')
+        matches = [dict(zip(header, row)) for row in rows
+                   if row[scalar_index] == scalar]
+        assert len(matches) == 1, f'{scalar} matched {matches}'
+        return header, matches[0]
+
+    def test_one_header_and_six_variant_rows(self, default_run):
+        header, rows = self._read(default_run)
+        assert len(rows) == 6
+        assert all(len(row) == len(header) for row in rows)
+        assert {row[header.index('scalar')] for row in rows} == {
+            'slvaf', 'slg20', 'sla20',
+            'slvaf-gic', 'slg20-gic', 'sla20-gic',
+        }
 
     def test_metadata_columns(self, default_run):
-        header, row = self._read(default_run, 'slvaf_*.csv')
-        record = dict(zip(header, row))
+        _, record = self._record(default_run, 'slvaf')
         assert record['ice_source'] == 'AIS'
         assert record['group'] == 'ISMIP7'
         assert record['model'] == 'SYNTH1'
@@ -308,27 +340,49 @@ class TestCsvOutput:
         assert record['configid'] == 'C007'
 
     def test_region_column_is_the_display_name(self, default_run):
-        header, row = self._read(default_run, 'slvaf_*.csv')
-        assert dict(zip(header, row))['region'] == 'ais'
+        _, record = self._record(default_run, 'slvaf')
+        assert record['region'] == 'ais'
 
-    def test_gic_variant_region_column_carries_the_suffix(self, default_run):
-        """Otherwise the two variants' rows are indistinguishable once merged."""
-        header, row = self._read(default_run, 'slvaf-gic_*.csv')
-        assert dict(zip(header, row))['region'] == 'ais-gic'
+    def test_gic_variant_uses_scalar_column(self, default_run):
+        _, record = self._record(default_run, 'slvaf-gic')
+        assert record['region'] == 'ais'
 
     def test_years_outside_the_run_are_na(self, default_run):
-        header, row = self._read(default_run, 'slvaf_*.csv')
-        record = dict(zip(header, row))
+        _, record = self._record(default_run, 'slvaf')
         assert record['y1850'] == 'NA'
         assert record['y2300'] == 'NA'
 
-    def test_values_match_the_netcdf(self, default_run):
-        header, row = self._read(default_run, 'slvaf_*.csv')
-        record = dict(zip(header, row))
-        values, years = read_series(default_run, 'slvaf')
+    @pytest.mark.parametrize('varname', ['slvaf', 'slg20', 'sla20'])
+    def test_values_match_the_netcdf(self, default_run, varname):
+        _, record = self._record(default_run, varname)
+        values, years = read_series(default_run, varname)
         for value, year in zip(values, years):
             # The CSV is indexed by nominal year, the NetCDF by timestamp.
             assert float(record[f'y{year - 1}']) == pytest.approx(value)
+
+    def test_basins_share_one_csv(self, submission, tmp_path):
+        assert run_scalars(submission, tmp_path, '--basins') == 0
+        header, rows = self._read(tmp_path)
+        assert len(rows) == 132
+        regions = {row[header.index('region')] for row in rows}
+        assert len(regions) == 22
+
+
+class TestOutputFormatOptions:
+    def test_no_netcdf_keeps_csv(self, submission, tmp_path):
+        assert run_scalars(submission, tmp_path, '--no-netcdf') == 0
+        assert glob.glob(os.path.join(str(tmp_path), 'csv', 'sl_*.csv'))
+        assert glob.glob(os.path.join(str(tmp_path), 'nc', '**', '*.nc'),
+                         recursive=True) == []
+
+    def test_no_csv_keeps_default_netcdf(self, submission, tmp_path):
+        assert run_scalars(submission, tmp_path, '--no-csv') == 0
+        assert glob.glob(os.path.join(str(tmp_path), 'csv', 'sl_*.csv')) == []
+        assert glob.glob(os.path.join(nc_dir(tmp_path), 'slvaf_*.nc'))
+
+    def test_netcdf_enables_gic_variant(self, submission, tmp_path):
+        assert run_scalars(submission, tmp_path, '--netcdf') == 0
+        assert glob.glob(os.path.join(nc_dir(tmp_path), 'slvaf-gic_*.nc'))
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +520,10 @@ class TestNoMm:
         assert glob.glob(os.path.join(nc_dir(tmp_path), 'slvaf_ais_*.nc')) \
             == []
         assert glob.glob(os.path.join(nc_dir(tmp_path), 'slvaf_r01_*.nc'))
+        csv_files = glob.glob(os.path.join(str(tmp_path), 'csv', 'sl_*.csv'))
+        assert len(csv_files) == 1
+        with open(csv_files[0], newline='') as f:
+            assert len(list(csv.reader(f))) == 127
 
     def test_without_basins_it_is_an_error(self, submission, tmp_path):
         """It would otherwise ask for no output at all."""

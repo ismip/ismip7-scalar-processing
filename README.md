@@ -48,7 +48,10 @@ Data/AIS/                  <-- --datapath, from the ISMIP Globus server under Ou
 ```
 
 Output goes to Output/nc, in a tree mirroring the model tree, and to
-Output/csv, flat. The
+Output/csv, flat. Each run produces one `sl_<run-fields>.csv` containing a row
+for each enabled SLC method, GIC variant, and selected mask; NetCDF remains one
+file per scalar. Use `--csv`/`--no-csv` and `--netcdf`/`--no-netcdf` to override
+the default formats. The
 [getting started](https://ismip.github.io/ismip7-scalar-processing/getting-started.html)
 page walks through this.
 
