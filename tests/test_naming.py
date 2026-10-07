@@ -10,6 +10,7 @@ from ismip7_scalars.naming import (
     find_model_file,
     make_file_stem,
     make_out_stem,
+    mask_descriptor,
     parse_ismip7_name,
     region_display_name,
     resolution_string,
@@ -135,6 +136,23 @@ class TestMakeFileStem:
         meta = parse_ismip7_name(f'slvaf_{stem}.nc')
         assert meta['configid'] == 'C007'
         assert meta['experiment'] == 'ssp585'
+
+
+class TestMaskDescriptor:
+    @pytest.mark.parametrize('flg_mm,flg_bm,expected', [
+        (True, False, 'mm'),
+        (True, True, 'mm-basins'),
+        (False, True, 'basins'),
+    ])
+    def test_selection_is_named(self, flg_mm, flg_bm, expected):
+        assert mask_descriptor(flg_mm, flg_bm) == expected
+
+    def test_every_selection_is_distinct(self):
+        """Otherwise two runs of one experiment would share a CSV filename."""
+        names = {mask_descriptor(mm, bm)
+                 for mm in (True, False) for bm in (True, False)
+                 if mm or bm}
+        assert len(names) == 3
 
 
 class TestFindModelFile:

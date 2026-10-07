@@ -100,10 +100,12 @@ per-basin values sum to the whole-sheet value.
 | `--netcdf` | enable NetCDF output for SLC, ST and FL scalars |
 | `--no-netcdf` | disable all NetCDF output |
 
-If omitted, both switches preserve the existing per-scalar defaults: plain SLC
-is written to NetCDF and CSV, GIC-masked SLC to CSV, and ST/FL to NetCDF.
-Explicit `--netcdf` also enables GIC-masked SLC NetCDF. With `--no-netcdf`, ST
-and FL scalars are not written because they have no CSV output.
+If omitted, both switches preserve the per-scalar defaults: plain SLC is
+written to NetCDF and CSV, GIC-masked SLC to CSV, and ST/FL to NetCDF.
+Explicit `--netcdf` also enables GIC-masked SLC NetCDF. With `--no-netcdf`, the
+state and flux scalars are skipped entirely rather than computed and discarded,
+because they have no CSV output. `--no-csv --no-netcdf` together is refused: it
+would do all the work and write nothing.
 
 ## Paths
 

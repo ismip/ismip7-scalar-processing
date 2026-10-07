@@ -24,8 +24,18 @@ slvaf_AIS_VUW_PISM1_m001_CESM2-WACCM_f001_ssp585_C007_1850-2300.nc
 The year range depends on `--histout`; here all of the historical run was
 prepended.
 
-The SLC CSV is named `sl_` followed by those run fields and years. It contains
-all enabled SLC methods, GIC variants, and selected masks for that run.
+The SLC CSV is named `sl_` followed by those run fields and years, then the
+mask selection it holds. It contains all enabled SLC methods, GIC variants, and
+selected masks for that run:
+
+| Mask selection | CSV name |
+|---|---|
+| default | sl_AIS_..._mm.csv |
+| `--basins` | sl_AIS_..._mm-basins.csv |
+| `--basins --no-mm` | sl_AIS_..._basins.csv |
+
+The selection is part of the name so that two runs of the same experiment with
+different masks do not overwrite each other.
 
 With `--basins` the mask name is added after the scalar in NetCDF filenames,
 and the whole-sheet file gains one too so that every file in the directory is
@@ -63,7 +73,8 @@ glaciers and ice caps, and written like this:
 and `--no-netcdf` override NetCDF output for all scalar classes; explicitly
 enabling NetCDF also enables the GIC-masked SLC NetCDF. When omitted, each
 format keeps the defaults shown above and in the state/flux sections below.
-Disabling NetCDF omits state and flux scalars because they have no CSV form.
+Disabling NetCDF skips the state and flux scalars entirely, because they have
+no CSV form.
 
 ### The CSV form
 

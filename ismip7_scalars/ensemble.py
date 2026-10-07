@@ -270,7 +270,11 @@ def main(argv=None):
     Always returns 0 unless the driver itself fails: a unit that could not be
     processed is a line in the summary, not a failure of the batch.
     """
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.csv is False and args.netcdf is False:
+        parser.error('--no-csv with --no-netcdf leaves no output to write; '
+                     'enable at least one format')
     log_dir = args.log_dir or os.path.join(os.getcwd(), 'Output', 'logs')
 
     core = load_core_csv(args.core_csv)

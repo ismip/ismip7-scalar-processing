@@ -293,10 +293,24 @@ file_stem   = sprintf('%s_%s_%s_%s_%s_%s_%s_%s_%d-%d', ...
                       exp, configid, year_start, year_end);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% SLC integrals — two passes: with GIC masking (-gic suffix) and without
+% SLC integrals — two passes: without GIC masking and with (-gic suffix)
 
-gic_masks   = {iaf2GIC,             ones(size(iaf2GIC))};
-gic_suffixes = {'-gic', ''};
+gic_masks   = {ones(size(iaf2GIC)), iaf2GIC};
+gic_suffixes = {'', '-gic'};
+
+% The run-level CSV holds every SLC method, GIC variant and selected mask,
+% so its rows are collected here and written once, after the loops.
+csv_rows = {};
+
+% The mask selection is part of the CSV filename: a default run and a
+% basins-only run of the same experiment would otherwise collide.
+if flg_mm && flg_bm
+    mask_descriptor = 'mm-basins';
+elseif flg_mm
+    mask_descriptor = 'mm';
+else
+    mask_descriptor = 'basins';
+end
 
 for igic = 1:2
     gic_mask   = gic_masks{igic};
@@ -458,17 +472,7 @@ for igic = 1:2
         end
 
         %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        % Write SLC CSV output — one file per SLC method
-
-        if ~exist(csvpath, 'dir'), mkdir(csvpath); end
-        meta_keys = {'ice_source','region','group','model','model_variant','scenario','GCM','forcingid','configid'};
-        meta_vals = {region, regionName, group, model, modelid, exp, esm, forcingid, configid};
-        csv_years = 1850:2300;
-        out_of_range = nominal_yrs(nominal_yrs < csv_years(1) | nominal_yrs > csv_years(end));
-        if ~isempty(out_of_range)
-            fprintf('Warning: %d year(s) outside CSV window %d-%d will be dropped.\n', ...
-                    numel(out_of_range), csv_years(1), csv_years(end));
-        end
+        % Collect SLC CSV rows — written once per run, after the loops
 
         csv_vars = { ...
             'slvaf', sl_VAF; ...
@@ -478,44 +482,63 @@ for igic = 1:2
         for iv = 1:size(csv_vars, 1)
             varname  = csv_vars{iv,1};
             sl_data  = csv_vars{iv,2};
-            if strcmp(regionName_raw, 'mm') && ~flg_bm
-                csvfile = fullfile(csvpath, [varname gic_suffix '_' file_stem '.csv']);
-            else
-                csvfile = fullfile(csvpath, [varname gic_suffix '_' dispName '_' file_stem '.csv']);
-            end
-            fid      = fopen(csvfile, 'w');
-            % Header
-            fprintf(fid, '%s', strjoin([meta_keys, arrayfun(@(y) sprintf('y%d',y), csv_years, 'UniformOutput', false)], ','));
-            fprintf(fid, '\n');
-            % Data row — metadata
-            for k = 1:length(meta_vals)
-                fprintf(fid, '%s,', meta_vals{k});
-            end
-            % Annual values
-            year_map = containers.Map(nominal_yrs, num2cell(sl_data(:)));
-            for iy = 1:length(csv_years)
-                y = csv_years(iy);
-                if isKey(year_map, y)
-                    val = year_map(y);
-                    if iy < length(csv_years)
-                        fprintf(fid, '%.10g,', val);
-                    else
-                        fprintf(fid, '%.10g', val);
-                    end
-                else
-                    if iy < length(csv_years)
-                        fprintf(fid, 'NA,');
-                    else
-                        fprintf(fid, 'NA');
-                    end
-                end
-            end
-            fprintf(fid, '\n');
-            fclose(fid);
-            fprintf('Created file %s\n', csvfile);
+            csv_rows{end+1} = {[varname gic_suffix], dispName, nominal_yrs, sl_data(:)};
         end
     end % region loop
 end % GIC mode loop
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Write the run-level SLC CSV — one file, one row per scalar and mask
+
+if ~isempty(csv_rows)
+    if ~exist(csvpath, 'dir'), mkdir(csvpath); end
+    meta_keys = {'ice_source','region','scalar','group','model','model_variant','scenario','GCM','forcingid','configid'};
+    csv_years = 1850:2300;
+    out_of_range = nominal_yrs(nominal_yrs < csv_years(1) | nominal_yrs > csv_years(end));
+    if ~isempty(out_of_range)
+        fprintf('Warning: %d year(s) outside CSV window %d-%d will be dropped.\n', ...
+                numel(out_of_range), csv_years(1), csv_years(end));
+    end
+
+    csvfile = fullfile(csvpath, ['sl_' file_stem '_' mask_descriptor '.csv']);
+    fid     = fopen(csvfile, 'w');
+    % Header
+    fprintf(fid, '%s', strjoin([meta_keys, arrayfun(@(y) sprintf('y%d',y), csv_years, 'UniformOutput', false)], ','));
+    fprintf(fid, '\n');
+    for ir = 1:length(csv_rows)
+        scalar_name = csv_rows{ir}{1};
+        region_name = csv_rows{ir}{2};
+        row_yrs     = csv_rows{ir}{3};
+        row_data    = csv_rows{ir}{4};
+        meta_vals   = {region, region_name, scalar_name, group, model, modelid, exp, esm, forcingid, configid};
+        % Data row — metadata
+        for k = 1:length(meta_vals)
+            fprintf(fid, '%s,', meta_vals{k});
+        end
+        % Annual values
+        year_map = containers.Map(row_yrs, num2cell(row_data));
+        for iy = 1:length(csv_years)
+            y = csv_years(iy);
+            if isKey(year_map, y)
+                val = year_map(y);
+                if iy < length(csv_years)
+                    fprintf(fid, '%.10g,', val);
+                else
+                    fprintf(fid, '%.10g', val);
+                end
+            else
+                if iy < length(csv_years)
+                    fprintf(fid, 'NA,');
+                else
+                    fprintf(fid, 'NA');
+                end
+            end
+        end
+        fprintf(fid, '\n');
+    end
+    fclose(fid);
+    fprintf('Created file %s\n', csvfile);
+end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

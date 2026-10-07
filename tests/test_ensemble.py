@@ -22,6 +22,7 @@ from ismip7_scalars.ensemble import (
     hist_configid_for,
     keep_unit,
     load_core_csv,
+    main,
     unit_status,
 )
 
@@ -351,3 +352,10 @@ class TestParser:
     def test_modelpath_is_required(self):
         with pytest.raises(SystemExit):
             build_parser().parse_args(['--region', 'AIS'])
+
+    def test_no_csv_with_no_netcdf_is_an_error(self, tmp_path):
+        """It would otherwise launch every unit to write nothing."""
+        with pytest.raises(SystemExit) as exc:
+            main(['--region', 'AIS', '--modelpath', str(tmp_path),
+                  '--no-csv', '--no-netcdf'])
+        assert exc.value.code == 2

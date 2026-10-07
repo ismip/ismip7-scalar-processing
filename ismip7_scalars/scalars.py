@@ -29,6 +29,7 @@ from ismip7_scalars.naming import (
     find_model_file,
     make_file_stem,
     make_out_stem,
+    mask_descriptor,
     region_display_name,
     resolution_string,
 )
@@ -261,12 +262,12 @@ def build_parser():
                              'subdirectories; default: ./Output)')
     parser.add_argument('--csv', action=argparse.BooleanOptionalAction,
                         default=None,
-                        help='Enable or disable SLC CSV output; omitted uses '
-                             'the existing defaults')
+                        help='Enable or disable SLC CSV output; omitted: use '
+                             'the per-scalar defaults')
     parser.add_argument('--netcdf', action=argparse.BooleanOptionalAction,
                         default=None,
-                        help='Enable or disable NetCDF output; omitted uses '
-                             'the existing defaults')
+                        help='Enable or disable NetCDF output; omitted: use '
+                             'the per-scalar defaults')
     parser.add_argument('--histout', type=int, default=-1,
                         help='Hist timesteps to prepend to output: 0=none, '
                              '1=last only, -1=all (default), N=last N')
@@ -815,11 +816,12 @@ def run(settings):
     time_axis = TimeAxis(geom.time_out, geom.time_units, geom.time_long_name,
                          geom.time_calendar)
 
-    # ---- SLC, once with GIC masking and once without ----
+    # ---- SLC, once without GIC masking and once with ----
+    # The plain variant comes first so that its rows lead the run-level CSV.
     warned_csv_years = False
     csv_rows = []
-    for gic_mask, gic_suffix in [(iaf2GIC, '-gic'),
-                                 (np.ones_like(iaf2GIC), '')]:
+    for gic_mask, gic_suffix in [(np.ones_like(iaf2GIC), ''),
+                                 (iaf2GIC, '-gic')]:
         is_gic = gic_suffix == '-gic'
         write_nc = _output_enabled(
             settings.netcdf_enabled,
@@ -844,11 +846,17 @@ def run(settings):
                               write_nc, write_csv, csv_rows)
 
     if csv_rows:
-        write_slc_csv(os.path.join(settings.csvpath, f'sl_{file_stem}.csv'),
-                      csv_rows)
+        descriptor = mask_descriptor(settings.flg_mm, settings.flg_bm)
+        write_slc_csv(
+            os.path.join(settings.csvpath,
+                         f'sl_{file_stem}_{descriptor}.csv'),
+            csv_rows)
 
     # ---- ST scalars, no GIC masking ----
-    if geom.st_ok:
+    # ST and FL have no CSV form, so with NetCDF off there is nothing to
+    # write and no reason to read their inputs.
+    netcdf_on = _output_enabled(settings.netcdf_enabled, True)
+    if geom.st_ok and netcdf_on:
         for regionName_raw, region_mask in regions.items():
             regionName = region_display_name(regionName_raw, settings.region)
             values = compute_st_series(geom, c, region_mask, af2, maxmask1,
@@ -864,8 +872,11 @@ def run(settings):
                         standard_name=standard_name)
 
     # ---- FL scalars, no GIC masking ----
-    skipped_scalars = run_fl_scalars(settings, geom, regions, af2, area_m2,
-                                     exp_is_hist)
+    if netcdf_on:
+        skipped_scalars = run_fl_scalars(settings, geom, regions, af2,
+                                         area_m2, exp_is_hist)
+    else:
+        skipped_scalars = []
 
     if skipped_scalars:
         print('\nSkipped scalars (input files not found):')
@@ -980,6 +991,9 @@ def main(argv=None):
     if args.no_mm and not args.basins:
         parser.error('--no-mm skips the only output --basins was not asked '
                      'for; use it together with --basins')
+    if args.csv is False and args.netcdf is False:
+        parser.error('--no-csv with --no-netcdf leaves no output to write; '
+                     'enable at least one format')
     settings = settings_from_args(args)
     try:
         run(settings)

@@ -200,8 +200,14 @@ class TestDefaultRun:
         """The GIC-masked SLC goes to CSV; only the plain variant gets NetCDF."""
         assert glob.glob(os.path.join(nc_dir(default_run),
                                       'slvaf-gic_*.nc')) == []
-        assert len(glob.glob(os.path.join(str(default_run), 'csv',
-                                          'sl_*.csv'))) == 1
+        matches = glob.glob(os.path.join(str(default_run), 'csv',
+                                         'sl_*.csv'))
+        assert len(matches) == 1
+        with open(matches[0], newline='') as f:
+            rows = list(csv.reader(f))
+        scalars = {row[rows[0].index('scalar')] for row in rows[1:]}
+        assert 'slvaf-gic' in scalars
+        assert 'slvaf' in scalars
 
     def test_whole_sheet_filename_carries_no_mask_name(self, default_run):
         names = [os.path.basename(p)
@@ -367,6 +373,18 @@ class TestCsvOutput:
         regions = {row[header.index('region')] for row in rows}
         assert len(regions) == 22
 
+    def test_filename_names_the_mask_selection(self, submission, tmp_path):
+        """A default run and a basins-only run must not overwrite each
+        other."""
+        assert run_scalars(submission, tmp_path) == 0
+        assert run_scalars(submission, tmp_path, '--basins', '--no-mm') == 0
+        names = sorted(os.path.basename(p) for p in
+                       glob.glob(os.path.join(str(tmp_path), 'csv',
+                                              'sl_*.csv')))
+        assert len(names) == 2
+        assert names[0].endswith('_basins.csv')
+        assert names[1].endswith('_mm.csv')
+
 
 class TestOutputFormatOptions:
     def test_no_netcdf_keeps_csv(self, submission, tmp_path):
@@ -374,6 +392,13 @@ class TestOutputFormatOptions:
         assert glob.glob(os.path.join(str(tmp_path), 'csv', 'sl_*.csv'))
         assert glob.glob(os.path.join(str(tmp_path), 'nc', '**', '*.nc'),
                          recursive=True) == []
+
+    def test_no_netcdf_skips_state_and_flux_entirely(self, submission,
+                                                     tmp_path, capsys):
+        """ST and FL have no CSV form, so with NetCDF off there is nothing to
+        compute and no missing-input report to print."""
+        assert run_scalars(submission, tmp_path, '--no-netcdf') == 0
+        assert 'Skipped scalars' not in capsys.readouterr().out
 
     def test_no_csv_keeps_default_netcdf(self, submission, tmp_path):
         assert run_scalars(submission, tmp_path, '--no-csv') == 0
@@ -383,6 +408,12 @@ class TestOutputFormatOptions:
     def test_netcdf_enables_gic_variant(self, submission, tmp_path):
         assert run_scalars(submission, tmp_path, '--netcdf') == 0
         assert glob.glob(os.path.join(nc_dir(tmp_path), 'slvaf-gic_*.nc'))
+
+    def test_no_csv_with_no_netcdf_is_an_error(self, submission, tmp_path):
+        """It would otherwise do all the work and write nothing."""
+        with pytest.raises(SystemExit) as exc:
+            run_scalars(submission, tmp_path, '--no-csv', '--no-netcdf')
+        assert exc.value.code == 2
 
 
 # ---------------------------------------------------------------------------

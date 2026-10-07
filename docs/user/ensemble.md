@@ -58,6 +58,9 @@ is wrong. Pair those by hand with `ismip7-scalars --hist-configid`.
 | `--python` | interpreter to run each experiment with |
 | `--log-dir` | where the logs go; default Output/logs |
 
+`--no-csv --no-netcdf` together is refused before any run starts, since every
+unit would do its work and write nothing.
+
 ## Logs
 
 One log per experiment, plus a summary naming every experiment and what

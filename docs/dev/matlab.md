@@ -39,6 +39,11 @@ request changes one of them, change those tables too — `compare_outputs.py`
 compares values, not attributes, so this is the one divergence it would not
 catch.
 
+**CSV output.** Both write the same run-level `sl_<run-fields>_<mask>.csv`:
+one header row, then one row per SLC method, GIC variant and selected mask,
+with the same ten metadata columns and the same `NA` padding outside the run.
+`compare_outputs.py` compares NetCDF only, so the CSV is checked by eye.
+
 Everything that both compute, they compute identically.
 
 ## Comparing them
