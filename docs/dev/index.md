@@ -40,8 +40,9 @@ The repository is laid out like this:
 : the MATLAB implementation of the same processing. See {doc}`matlab`.
 
 `manual-tests/`
-: what cannot run in CI -- the Python/MATLAB comparison -- and the MINI cases.
-  See {doc}`mini`.
+: what cannot run in CI -- the Python/MATLAB comparison, including the CSV
+  comparator and MATLAB drivers in `mvsp/`, and the MINI cases. See
+  {doc}`mini` and {doc}`matlab`.
 
 `test-data/`
 : the committed MINI inputs.

@@ -42,7 +42,14 @@ catch.
 **CSV output.** Both write the same run-level `sl_<run-fields>_<mask>.csv`:
 one header row, then one row per SLC method, GIC variant and selected mask,
 with the same ten metadata columns and the same `NA` padding outside the run.
-`compare_outputs.py` compares NetCDF only, so the CSV is checked by eye.
+`compare_outputs.py` compares NetCDF only, so the CSV is checked by
+`manual-tests/mvsp/compare_csv.py` instead.
+
+**GIC-masked NetCDF.** MATLAB always writes the GIC-masked SLC NetCDF
+(`slvaf-gic`, `slg20-gic`, `sla20-gic`); Python writes it only when NetCDF is
+explicitly enabled. This is deliberate -- see {doc}`../user/output` -- and
+does not affect the CSV, which carries the `-gic` rows in both. Pass
+`--netcdf` to Python for a like-for-like NetCDF comparison.
 
 Everything that both compute, they compute identically.
 
@@ -66,9 +73,13 @@ methods, the four state scalars and the six flux scalars -- checking SLC against
 an absolute tolerance of 1 × 10⁻¹⁰ m and everything else against a relative
 tolerance of 1 × 10⁻¹⁰.
 
+The consolidated CSV is compared separately, by
+`manual-tests/mvsp/compare_csv.py`; `manual-tests/mvsp/` also holds the MATLAB
+drivers for the three mask combinations. See the README there.
+
 Observed differences are at machine epsilon, around 10⁻¹⁵ relative, for every
 variable; most recently against `Submission_Tests_v1` AIS VUW/PISM1 and GrIS
-NORCE/CISM16x-MAR312-p50 on NIRD.
+NORCE/CISM16x-MAR312-p50 on NIRD, and AIS NORCE/CISM ssp370 C003 for the CSV.
 
 This comparison cannot run in CI -- there is no MATLAB there, and no submission
 tree -- so it is a manual step. Run it when you change anything that touches
