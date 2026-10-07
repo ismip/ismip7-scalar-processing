@@ -1,8 +1,8 @@
 % Driver for the MATLAB-vs-Python scalar comparison on NIRD: basins only.
 %
 % Same as run_mvsp.m but with flg_mm = false, flg_bm = true, i.e. the
-% Python "--basins" case.  The output CSV must be named
-% sl_..._basins.csv, not sl_..._mm.csv.
+% Python "--basins --no-mm" case.  The output CSV must be named
+% sl_..._basins.csv, not sl_..._mm-basins.csv.
 %
 % Usage:
 %   matlab -nodisplay -nosplash -nojvm -singleCompThread \

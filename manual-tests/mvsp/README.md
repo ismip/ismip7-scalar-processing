@@ -33,8 +33,8 @@ and reports both the maximum absolute and the maximum relative difference.
 The relative figure is large only where the value itself is near zero, which
 is why the absolute floor exists.
 
-The underlying agreement is much tighter: the NetCDF comparison shows about
-`1e-13` relative.
+The underlying agreement is much tighter: the NetCDF comparison, which is not
+limited by the CSV formatting, agrees to about `1e-12` relative or better.
 
 ## Running it
 
@@ -65,6 +65,11 @@ python compare_csv.py \
 `run_mvsp.m` is the whole-ice-sheet case, `run_mvsp_basins.m` the basins-only
 case and `run_mvsp_mmbasins.m` the combined case. Each writes to its own
 `Scalars_mvsp/mat*` tree so the three can be compared independently.
+
+The comparator matches files by basename, so the two directories must hold the
+same `sl_*.csv` name. Run the Python side with the flags from the table above
+-- `--basins` alone gives `_mm-basins.csv` and will not match a `_basins.csv`
+from MATLAB.
 
 ## The `-gic` NetCDF asymmetry
 

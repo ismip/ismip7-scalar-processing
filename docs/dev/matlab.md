@@ -77,9 +77,14 @@ The consolidated CSV is compared separately, by
 `manual-tests/mvsp/compare_csv.py`; `manual-tests/mvsp/` also holds the MATLAB
 drivers for the three mask combinations. See the README there.
 
-Observed differences are at machine epsilon, around 10⁻¹⁵ relative, for every
-variable; most recently against `Submission_Tests_v1` AIS VUW/PISM1 and GrIS
-NORCE/CISM16x-MAR312-p50 on NIRD, and AIS NORCE/CISM ssp370 C003 for the CSV.
+Observed differences are at machine epsilon for most variables, around 10⁻¹⁵
+relative. The two cumulative SLC methods, `slvaf` and `slg20`, are a little
+looser at about 3 × 10⁻¹² relative (a few 10⁻¹² m absolute) -- still far inside
+the 10⁻¹⁰ tolerance. Both are differences of two large volume sums, so the
+comparison is sensitive to the last bits of the input fields; the exact cause of
+the residual has not been traced. Most recently checked against
+`Submission_Tests_v1` AIS VUW/PISM1 and GrIS NORCE/CISM16x-MAR312-p50 on NIRD,
+and AIS NORCE/CISM ssp370 C003 for the CSV.
 
 This comparison cannot run in CI -- there is no MATLAB there, and no submission
 tree -- so it is a manual step. Run it when you change anything that touches
