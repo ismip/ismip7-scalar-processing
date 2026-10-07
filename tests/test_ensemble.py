@@ -22,6 +22,7 @@ from ismip7_scalars.ensemble import (
     hist_configid_for,
     keep_unit,
     load_core_csv,
+    main,
     unit_status,
 )
 
@@ -37,7 +38,7 @@ def make_args(modelpath, **overrides):
     args = dict(region='AIS', modelpath=modelpath, datapath=None,
                 params_path=None, outpath=None, exp_group=None, groups=None,
                 models=None, configids=None, histout=None, basins=False,
-                python='python')
+                csv=None, netcdf=None, python='python')
     args.update(overrides)
     return SimpleNamespace(**args)
 
@@ -264,6 +265,26 @@ class TestBuildCommand:
         cmd, _ = build_command(make_args(root, basins=True), unit, CORE)
         assert '--basins' in cmd
 
+    @pytest.mark.parametrize('option,value,flag', [
+        ('csv', True, '--csv'), ('csv', False, '--no-csv'),
+        ('netcdf', True, '--netcdf'), ('netcdf', False, '--no-netcdf'),
+    ])
+    def test_format_options_are_passed_through(self, tmp_path, option, value,
+                                               flag):
+        root = str(tmp_path)
+        unit = make_unit(root, configid='C001', experiment='historical')
+        cmd, _ = build_command(make_args(root, **{option: value}), unit, CORE)
+        assert flag in cmd
+
+    def test_unset_format_options_are_not_passed_through(self, tmp_path):
+        root = str(tmp_path)
+        unit = make_unit(root, configid='C001', experiment='historical')
+        cmd, _ = build_command(make_args(root), unit, CORE)
+        assert '--csv' not in cmd
+        assert '--no-csv' not in cmd
+        assert '--netcdf' not in cmd
+        assert '--no-netcdf' not in cmd
+
     def test_scenario_unknown_to_the_table_uses_the_filename(self, tmp_path):
         """A PPE experiment is not in the CORE table but is still a projection."""
         root = str(tmp_path)
@@ -331,3 +352,10 @@ class TestParser:
     def test_modelpath_is_required(self):
         with pytest.raises(SystemExit):
             build_parser().parse_args(['--region', 'AIS'])
+
+    def test_no_csv_with_no_netcdf_is_an_error(self, tmp_path):
+        """It would otherwise launch every unit to write nothing."""
+        with pytest.raises(SystemExit) as exc:
+            main(['--region', 'AIS', '--modelpath', str(tmp_path),
+                  '--no-csv', '--no-netcdf'])
+        assert exc.value.code == 2

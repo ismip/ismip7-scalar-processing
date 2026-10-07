@@ -77,6 +77,8 @@ Two things need data that cannot live in the repository, and are in
 
 - `compare_outputs.py`, the Python-versus-MATLAB comparison. See
   {doc}`matlab`.
+- `mvsp/`, the MATLAB drivers and the CSV comparator for the same comparison.
+  See the README there.
 - the MINI `setup/` scripts, which need CDO and NCO to regenerate the MINI
   input files. The files they produce *are* committed, so the MINI tests
   themselves run in CI.

@@ -5,7 +5,7 @@ Two trees under the output path (Output by default):
 ```
 Output/
 ├── nc/AIS/VUW/PISM1/CORE/C007/     one NetCDF file per scalar; mirrors the model tree
-└── csv/                            one CSV per sea-level series; flat
+└── csv/                            one CSV per run with all enabled SLC rows; flat
 ```
 
 The NetCDF tree mirrors the model tree so a submission's output sits where its
@@ -14,8 +14,8 @@ community-wide table.
 
 ## Filenames
 
-A file's name is the scalar, then the same nine fields as the model files it
-came from, then the years actually written:
+A NetCDF file's name is the scalar, then the same nine fields as the model
+files it came from, then the years actually written:
 
 ```
 slvaf_AIS_VUW_PISM1_m001_CESM2-WACCM_f001_ssp585_C007_1850-2300.nc
@@ -24,8 +24,22 @@ slvaf_AIS_VUW_PISM1_m001_CESM2-WACCM_f001_ssp585_C007_1850-2300.nc
 The year range depends on `--histout`; here all of the historical run was
 prepended.
 
-With `--basins` the mask name is added after the scalar, and the whole-sheet
-file gains one too so that every file in the directory is named the same way:
+The SLC CSV is named `sl_` followed by those run fields and years, then the
+mask selection it holds. It contains all enabled SLC methods, GIC variants, and
+selected masks for that run:
+
+| Mask selection | CSV name |
+|---|---|
+| default | sl_AIS_..._mm.csv |
+| `--basins` | sl_AIS_..._mm-basins.csv |
+| `--basins --no-mm` | sl_AIS_..._basins.csv |
+
+The selection is part of the name so that two runs of the same experiment with
+different masks do not overwrite each other.
+
+With `--basins` the mask name is added after the scalar in NetCDF filenames,
+and the whole-sheet file gains one too so that every file in the directory is
+named the same way:
 
 | | Whole sheet | Basin r01 |
 |---|---|---|
@@ -55,19 +69,29 @@ glaciers and ice caps, and written like this:
 | including glaciers and ice caps | yes | yes |
 | excluding them (-gic) | | yes |
 
+`--csv` and `--no-csv` override CSV output for both SLC variants. `--netcdf`
+and `--no-netcdf` override NetCDF output for all scalar classes; explicitly
+enabling NetCDF also enables the GIC-masked SLC NetCDF. When omitted, each
+format keeps the defaults shown above and in the state/flux sections below.
+Disabling NetCDF skips the state and flux scalars entirely, because they have
+no CSV form.
+
 ### The CSV form
 
-One header row and one data row. The first nine columns identify the run:
+One header row and one data row per SLC method, GIC mode, and selected mask.
+The first ten columns identify the run and scalar:
 
 | Column | Holds |
 |---|---|
 | ice_source | AIS or GrIS |
-| region | the mask name (ais, gris or a basin), with -gic appended for that variant |
+| region | the geographic mask name (ais, gris or a basin) |
+| scalar | `slvaf`, `slg20`, or `sla20`; `-gic` marks the GIC-excluded variant |
 | group, model, model_variant, scenario, GCM, forcingid, configid | the run's fields; model_variant is the ISM member ID, scenario the experiment |
 
-Then one column per nominal year, y1850 to y2300. Years the run does not
-cover are NA. A run that reaches outside that window has those years dropped,
-with a warning naming them.
+Then one column per nominal year, y1850 to y2300. Years the run does not cover
+are NA. A run that reaches outside that window has those years dropped, with a
+warning naming them. With AIS `--basins`, the CSV has 132 data rows when the
+whole-sheet mask is included, or 126 with `--no-mm`.
 
 ## State scalars
 
@@ -104,10 +128,11 @@ other files of the same run.
 
 ## Attributes
 
-Every file holds a time coordinate and one variable, both double precision,
-on an unlimited time dimension. The time coordinate copies its units, calendar
-and long name from the model file. The state and flux scalars carry the long
-name, units and standard name given in the ISMIP7 data request, read from the
-isschecker package (see {doc}`data-sources`); the data request gives no
-standard name for tendlifmassbf and tendligroundf, so those two carry none.
-The sea-level scalars are this package's own and have no standard name either.
+Every NetCDF file holds a time coordinate and one variable, both double
+precision, on an unlimited time dimension. The time coordinate copies its
+units, calendar and long name from the model file. The state and flux scalars
+carry the long name, units and standard name given in the ISMIP7 data request,
+read from the isschecker package (see {doc}`data-sources`); the data request
+gives no standard name for tendlifmassbf and tendligroundf, so those two carry
+none. The sea-level scalars are this package's own and have no standard name
+either.

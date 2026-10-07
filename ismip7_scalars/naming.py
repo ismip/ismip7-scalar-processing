@@ -149,6 +149,19 @@ def make_out_stem(varname, suffix, regionName_raw, regionName, base_stem,
     return f'{varname}{suffix}_{regionName}_{base_stem}'
 
 
+def mask_descriptor(flg_mm, flg_bm):
+    """Name the mask selection, for the run-level CSV filename.
+
+    The run-level CSV holds every selected mask, so its filename has to say
+    which selection it holds: otherwise a default run and a ``--basins
+    --no-mm`` run of the same experiment would write the same name and the
+    second would silently replace the first.
+    """
+    if flg_mm and flg_bm:
+        return 'mm-basins'
+    return 'mm' if flg_mm else 'basins'
+
+
 def make_file_stem(region, group, model, modelid, esm, forcingid, exp,
                    configid, year_start, year_end):
     """The identifying part of an output filename, shared by every variable."""

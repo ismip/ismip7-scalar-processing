@@ -29,6 +29,7 @@ from ismip7_scalars.naming import (
     find_model_file,
     make_file_stem,
     make_out_stem,
+    mask_descriptor,
     region_display_name,
     resolution_string,
 )
@@ -129,6 +130,8 @@ class Settings:
     flg_mm: bool = True
     flg_bm: bool = False
     verbose: bool = False
+    csv_enabled: bool | None = None
+    netcdf_enabled: bool | None = None
 
     @property
     def exppath(self):
@@ -257,6 +260,14 @@ def build_parser():
     parser.add_argument('--outpath', default=None,
                         help='Root path for output (nc/ and csv/ created as '
                              'subdirectories; default: ./Output)')
+    parser.add_argument('--csv', action=argparse.BooleanOptionalAction,
+                        default=None,
+                        help='Enable or disable SLC CSV output; omitted: use '
+                             'the per-scalar defaults')
+    parser.add_argument('--netcdf', action=argparse.BooleanOptionalAction,
+                        default=None,
+                        help='Enable or disable NetCDF output; omitted: use '
+                             'the per-scalar defaults')
     parser.add_argument('--histout', type=int, default=-1,
                         help='Hist timesteps to prepend to output: 0=none, '
                              '1=last only, -1=all (default), N=last N')
@@ -309,6 +320,8 @@ def settings_from_args(args, cwd=None):
         flg_mm=not args.no_mm,
         flg_bm=args.basins,
         verbose=args.verbose,
+        csv_enabled=args.csv,
+        netcdf_enabled=args.netcdf,
     )
 
 
@@ -737,14 +750,16 @@ def compute_st_series(geom, c, region_mask, af2, maxmask1, area_m2):
 # Output
 
 
-def _slc_meta(settings, regionName, gic_suffix):
+def _output_enabled(override, default):
+    return default if override is None else override
+
+
+def _slc_meta(settings, regionName, scalar):
     """Metadata columns for an SLC CSV row."""
     return {
         'ice_source': settings.region,
-        # The GIC variants differ only here, so the suffix has to be part of
-        # the row: without it two rows from the same run are indistinguishable
-        # once they are concatenated into a community-wide table.
-        'region': f'{regionName}{gic_suffix}',
+        'region': regionName,
+        'scalar': scalar,
         'group': settings.group,
         'model': settings.model,
         'model_variant': settings.modelid,
@@ -756,8 +771,9 @@ def _slc_meta(settings, regionName, gic_suffix):
 
 
 def write_slc_outputs(settings, geom, regionName_raw, regionName, gic_suffix,
-                      file_stem, series, time_axis, write_nc, write_csv):
-    """Write the NetCDF and CSV forms of one mask's three SLC series."""
+                      file_stem, series, time_axis, write_nc, write_csv,
+                      csv_rows):
+    """Write NetCDF series and collect CSV rows for one mask."""
     for (varname, long_name), values in zip(SLC_SPECS, series):
         stem = make_out_stem(varname, gic_suffix, regionName_raw, regionName,
                              file_stem, settings.flg_bm)
@@ -765,9 +781,9 @@ def write_slc_outputs(settings, geom, regionName_raw, regionName, gic_suffix,
             write_scalar_nc(os.path.join(settings.ncpath, f'{stem}.nc'),
                             varname, values, time_axis, long_name, 'm')
         if write_csv:
-            write_slc_csv(os.path.join(settings.csvpath, f'{stem}.csv'),
-                          _slc_meta(settings, regionName, gic_suffix),
-                          geom.nominal_yrs, values)
+            csv_rows.append((
+                _slc_meta(settings, regionName, f'{varname}{gic_suffix}'),
+                geom.nominal_yrs, values))
 
 
 # --------------------------------------------------------------------------
@@ -800,13 +816,19 @@ def run(settings):
     time_axis = TimeAxis(geom.time_out, geom.time_units, geom.time_long_name,
                          geom.time_calendar)
 
-    # ---- SLC, once with GIC masking and once without ----
+    # ---- SLC, once without GIC masking and once with ----
+    # The plain variant comes first so that its rows lead the run-level CSV.
     warned_csv_years = False
-    for gic_mask, gic_suffix in [(iaf2GIC, '-gic'),
-                                 (np.ones_like(iaf2GIC), '')]:
+    csv_rows = []
+    for gic_mask, gic_suffix in [(np.ones_like(iaf2GIC), ''),
+                                 (iaf2GIC, '-gic')]:
         is_gic = gic_suffix == '-gic'
-        write_nc = FLG_SLC_GIC_NC if is_gic else FLG_SLC_NC
-        write_csv = FLG_SLC_GIC_CSV if is_gic else FLG_SLC_CSV
+        write_nc = _output_enabled(
+            settings.netcdf_enabled,
+            FLG_SLC_GIC_NC if is_gic else FLG_SLC_NC)
+        write_csv = _output_enabled(
+            settings.csv_enabled,
+            FLG_SLC_GIC_CSV if is_gic else FLG_SLC_CSV)
         if write_csv and not warned_csv_years:
             warn_years_out_of_range(geom.nominal_yrs)
             warned_csv_years = True
@@ -821,10 +843,20 @@ def run(settings):
                     print(f'  {varname}: {values}')
             write_slc_outputs(settings, geom, regionName_raw, regionName,
                               gic_suffix, file_stem, series, time_axis,
-                              write_nc, write_csv)
+                              write_nc, write_csv, csv_rows)
+
+    if csv_rows:
+        descriptor = mask_descriptor(settings.flg_mm, settings.flg_bm)
+        write_slc_csv(
+            os.path.join(settings.csvpath,
+                         f'sl_{file_stem}_{descriptor}.csv'),
+            csv_rows)
 
     # ---- ST scalars, no GIC masking ----
-    if geom.st_ok:
+    # ST and FL have no CSV form, so with NetCDF off there is nothing to
+    # write and no reason to read their inputs.
+    netcdf_on = _output_enabled(settings.netcdf_enabled, True)
+    if geom.st_ok and netcdf_on:
         for regionName_raw, region_mask in regions.items():
             regionName = region_display_name(regionName_raw, settings.region)
             values = compute_st_series(geom, c, region_mask, af2, maxmask1,
@@ -833,15 +865,18 @@ def run(settings):
                 standard_name, units, long_name = variable_metadata(varname)
                 stem = make_out_stem(varname, '', regionName_raw, regionName,
                                      file_stem, settings.flg_bm)
-                if FLG_ST_NC:
+                if _output_enabled(settings.netcdf_enabled, FLG_ST_NC):
                     write_scalar_nc(
                         os.path.join(settings.ncpath, f'{stem}.nc'), varname,
                         values[varname], time_axis, long_name, units,
                         standard_name=standard_name)
 
     # ---- FL scalars, no GIC masking ----
-    skipped_scalars = run_fl_scalars(settings, geom, regions, af2, area_m2,
-                                     exp_is_hist)
+    if netcdf_on:
+        skipped_scalars = run_fl_scalars(settings, geom, regions, af2,
+                                         area_m2, exp_is_hist)
+    else:
+        skipped_scalars = []
 
     if skipped_scalars:
         print('\nSkipped scalars (input files not found):')
@@ -936,7 +971,7 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
 
             stem = make_out_stem(tendvarname, '', regionName_raw, regionName,
                                  fl_file_stem, settings.flg_bm)
-            if FLG_FL_NC:
+            if _output_enabled(settings.netcdf_enabled, FLG_FL_NC):
                 write_scalar_nc(os.path.join(settings.ncpath, f'{stem}.nc'),
                                 tendvarname, fl_integral, fl_time_axis,
                                 long_name, units,
@@ -956,6 +991,9 @@ def main(argv=None):
     if args.no_mm and not args.basins:
         parser.error('--no-mm skips the only output --basins was not asked '
                      'for; use it together with --basins')
+    if args.csv is False and args.netcdf is False:
+        parser.error('--no-csv with --no-netcdf leaves no output to write; '
+                     'enable at least one format')
     settings = settings_from_args(args)
     try:
         run(settings)

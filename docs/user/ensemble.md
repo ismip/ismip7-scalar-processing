@@ -53,9 +53,13 @@ is wrong. Pair those by hand with `ismip7-scalars --hist-configid`.
 | `--exp-group` | only this experiment group |
 | `--groups`, `--models`, `--configids` | comma-separated filters |
 | `--datapath`, `--params-path`, `--outpath`, `--histout`, `--basins` | passed through to each run |
+| `--csv`, `--no-csv`, `--netcdf`, `--no-netcdf` | output format overrides passed through to each run |
 | `--core-csv` | use a different experiment table |
 | `--python` | interpreter to run each experiment with |
 | `--log-dir` | where the logs go; default Output/logs |
+
+`--no-csv --no-netcdf` together is refused before any run starts, since every
+unit would do its work and write nothing.
 
 ## Logs
 

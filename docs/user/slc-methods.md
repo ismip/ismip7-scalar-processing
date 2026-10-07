@@ -72,7 +72,9 @@ params.nc may hold its own ocean area, but it is ignored.
 
 ## Glaciers and ice caps
 
-Every sea-level series is written twice. The -gic variant leaves glaciers and
-ice caps out of the integral, using the iaf2_GIC mask; the plain variant
-includes everything on the grid. Which one you want depends on whether the
-glaciers around the ice sheet are being counted elsewhere in your budget.
+Every sea-level method is calculated twice. The `-gic` variant leaves glaciers
+and ice caps out of the integral, using the iaf2_GIC mask; the plain variant
+includes everything on the grid. Both variants are rows in the run-level SLC
+CSV; by default, only the plain variant is also written to NetCDF. Which
+variant you want depends on whether the glaciers around the ice sheet are
+being counted elsewhere in your budget.

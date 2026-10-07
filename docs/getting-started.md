@@ -98,14 +98,15 @@ Output/
 │   ├── lim_...nc     limnsw_...nc   iareagr_...nc   iareafl_...nc
 │   └── tendacabf_...nc  ...
 └── csv/
-    ├── slvaf_AIS_VUW_PISM1_...csv
-    └── slvaf-gic_AIS_VUW_PISM1_...csv
+    └── sl_AIS_VUW_PISM1_m001_CESM2-WACCM_f001_ssp585_C007_1850-2300_mm.csv
 ```
 
 NetCDF files go in a tree that mirrors your model tree. CSVs go in one flat
-directory, one row per file with a column per year from 1850 to 2300, so that
-rows from many models can be joined into one table. Change the root with
-`--outpath`.
+directory. Each run's CSV has one row per SLC method and GIC variant, with a
+column per year from 1850 to 2300, so rows from many models can be joined into
+one table. With `--basins`, it also includes rows for each selected mask, and
+the mask selection is part of the filename so that runs with different masks do
+not overwrite each other. Change the root with `--outpath`.
 
 ## When something is missing
 
