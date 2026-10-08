@@ -1,21 +1,33 @@
 # Installation
 
-## From a checkout
+## From conda-forge
 
-The package is not on conda-forge yet. Until it is, install from a checkout
-of the repository:
+The tools are packaged on
+[conda-forge](https://anaconda.org/conda-forge/ismip7-scalars), for Linux and
+macOS. There is no need to clone the repository:
 
 ```bash
-git clone https://github.com/ismip/ismip7-scalar-processing.git
-cd ismip7-scalar-processing
-conda env create -f ismip7_scalars_env.yml
+conda create -n ismip7-scalars -c conda-forge ismip7-scalars
 conda activate ismip7-scalars
-python -m pip install --no-deps --no-build-isolation .
 ismip7-scalars --version
 ```
 
-The last line should print a version. Once a conda-forge package exists,
-this page will say `conda create` instead.
+The last line should print a version. `mamba` and `micromamba` work the same
+way. If your conda is set up with the `defaults` channel, add
+`--override-channels`; packages from the two channels do not mix.
+
+## Updating
+
+New releases come often, with bug fixes and new features. Update before you
+process new output:
+
+```bash
+conda update -n ismip7-scalars -c conda-forge ismip7-scalars
+ismip7-scalars --version
+```
+
+The conda-forge package is built from tagged releases, so a fix can be on the
+repository's main branch for a while before it reaches you.
 
 ## What it installs
 
@@ -39,7 +51,7 @@ several environments are on the path at once.
 
 ## Dependencies
 
-ismip7_scalars_env.yml installs these:
+The conda-forge package brings these with it:
 
 | Package | Versions | Reason for the bounds |
 |---|---|---|
@@ -49,10 +61,16 @@ ismip7_scalars_env.yml installs these:
 | isschecker | 0.2 up to 1 | ships the ISMIP7 data request; see {doc}`data-sources` |
 
 The test suite runs at both ends of every range. If you report a problem,
-please include the output of `conda list` for your environment.
+please include the output of `ismip7-scalars --version` and of `conda list`.
+
+## From source
+
+You only need a source install to work *on* the package: to test a change
+that has not been released yet, or to develop one. {doc}`../dev/source-install`
+covers it.
 
 ## MATLAB
 
-The MATLAB implementation is not installed by any of this. It is the
-matlab/scalars.m script in the repository, run from a checkout. See
+The MATLAB implementation is not in the conda-forge package. It is the
+matlab/scalars.m script in the repository, run from a clone. See
 {doc}`../dev/matlab`.

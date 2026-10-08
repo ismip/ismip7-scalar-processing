@@ -5,24 +5,42 @@ This page is for maintainers -- those with write access to
 you are contributing from a fork, nothing here is yours to do; open the pull
 request and a maintainer will fold it into the next release.
 
-Once the feedstock is live, modelers get the tools from conda-forge, and
+Users get the tools from
+[conda-forge](https://anaconda.org/conda-forge/ismip7-scalars), and
 conda-forge builds from a tag. Anything on `main` that has not been tagged
 therefore does not exist as far as they are concerned.
 
-**So tag a release whenever a change reaches `main` that a user would notice.**
-That is deliberately a low bar: a change to any computed number, a new or
-altered command-line option, a change to the output filenames or CSV columns, a
-bug fix, or a widened dependency range. Releases are cheap; someone chasing a
-discrepancy against a source checkout that turns out to be six months of
-untagged changes is not. Refactorings, tests, CI and documentation-only changes
-need no release, though there is no harm in folding them into the next one.
+**So release often: whenever a change reaches `main` that a user would
+notice.** That is deliberately a low bar: a change to any computed number, a
+new or altered command-line option, a change to the output filenames or CSV
+columns, a bug fix, or a widened dependency range. Releases are cheap; someone
+chasing a discrepancy against a source checkout that turns out to be six months
+of untagged changes is not. Refactorings, tests, CI and documentation-only
+changes need no release, though there is no harm in folding them into the next
+one.
 
-```{important}
-A change that alters a computed value deserves a **minor** bump at least, and a
-line in the release notes saying which variable moved and by how much. People
-compare these numbers across submissions; a silent change to one of them is
-worse than no release at all.
-```
+## Version numbers
+
+Versions follow [semantic versioning](https://semver.org/):
+
+- **patch** (0.1.0 → 0.1.1): a fix that changes no output.
+- **minor** (0.1.0 → 0.2.0): a new command, option or option value, a
+  corrected number, or a dependency range widened.
+- **major** (0.1.0 → 1.0.0): a change to the output layout, the filenames or
+  the CSV columns, or an option removed or renamed.
+
+While the version is 0.x, a change that would be major bumps the minor
+version instead, as semantic versioning allows.
+
+A change to a computed value is never a patch, and its release notes say which
+variable moved and by how much. People compare these numbers across
+submissions; a silent change to one of them is worse than no release at all.
+
+A pull request with a change a user would notice should bump `version` in
+`pyproject.toml` itself, by the smallest step that covers it. If `main`
+already has an unreleased bump that covers it, leave it. That way `main`
+always carries the version its next release will have, and cutting the
+release is only the tag.
 
 ## The relationship with `isschecker`
 
@@ -40,10 +58,10 @@ raised to the version that has it.
 
 ## Cutting a release
 
-1. Bump `version` in `pyproject.toml` following
-   [semantic versioning](https://semver.org/) -- patch for a fix that does not
-   change any output, minor for a new option or a corrected number, major for a
-   change to the output layout or filenames -- and merge that to `main`.
+1. Check that `version` in `pyproject.toml` is ahead of the last release.
+   The pull requests since then should have bumped it (see
+   [Version numbers](#version-numbers)); if none did, bump it now and merge
+   that to `main`.
 
 2. Draft a new
    [GitHub release](https://github.com/ismip/ismip7-scalar-processing/releases/new)
@@ -69,18 +87,6 @@ hash, not the requirements. Those three lists are the same constraints written
 down three times, and it is worth checking them against one another at each
 release.
 
-## The first release
-
-The package has no feedstock until someone creates one. Open a pull request
-against
-[`conda-forge/staged-recipes`](https://github.com/conda-forge/staged-recipes)
-adding a `recipes/ismip7-scalars/recipe.yaml`. It is a pure-Python `noarch`
-recipe: the source is the GitHub tag tarball, the build is
-`pip install . -vv --no-deps --no-build-isolation`, the run requirements are the
-`dependencies` from `pyproject.toml`, and the tests should import
-`ismip7_scalars` and run each entry point's `--version`. Once that merges,
-conda-forge creates the feedstock and the bot takes over from there.
-
 ## Confirming what was published
 
 Optionally, confirm what was published rather than assuming it:
@@ -104,16 +110,17 @@ takes roughly an hour to propagate. Until it has, `conda create` either cannot
 find the new version or reports the old one, and neither means anything is
 wrong. So this is not a step to sit and retry -- come back to it later in the
 day, or skip it. CI already runs the full suite against the tagged source at
-both ends of every dependency range, and the feedstock runs the recipe's own
-import and `--version` tests before publishing at all.
+both ends of every dependency range, and the feedstock runs the import, each
+command's `--help` and the test suite before publishing at all.
 
 ## Maintaining the feedstock
 
-The conda-forge package is built by its own repository, separate from this one,
-with its own list of maintainers -- being a maintainer here does not make you
-one there. Only feedstock maintainers can merge the bot's version-bump PRs, so
-a release stalls if nobody available has that access. It is worth having more
-than one of us on the list.
+The conda-forge package is built by
+[its own repository](https://github.com/conda-forge/ismip7-scalars-feedstock),
+separate from this one, with its own list of maintainers -- being a maintainer
+here does not make you one there. Only feedstock maintainers can merge the
+bot's version-bump PRs, so a release stalls if nobody available has that
+access. It is worth having more than one of us on the list.
 
 The list lives in the recipe itself, under `extra: recipe-maintainers:`. To be
 added, open an **issue** on the feedstock titled:
