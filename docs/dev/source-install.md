@@ -1,20 +1,28 @@
 # Installing from source
 
 You only need this to work *on* the package -- to test a change that has not
-been released yet, or to develop one. Until the package is on conda-forge,
-users install the same way minus the `-e` ({doc}`../user/installation`).
+been released yet, or to develop one. For processing, install from conda-forge
+instead ({doc}`../user/installation`).
 
-Create the conda environment and install the package into it:
+Clone the repository, create the conda environment and install the package
+into it:
 
 ```bash
+git clone https://github.com/ismip/ismip7-scalar-processing.git
+cd ismip7-scalar-processing
 conda env create -f ismip7_scalars_env.yml
 conda activate ismip7-scalars
 python -m pip install --no-deps --no-build-isolation -e .
 ```
 
 Note that `ismip7_scalars_env.yml` installs the dependencies but not the
-package itself: an `ismip7-scalars` environment made this way holds no
-`ismip7-scalars` package until the `pip install` runs.
+package itself, so the environment it creates is not the one conda-forge gives
+you: an `ismip7-scalars` environment made this way holds no `ismip7-scalars`
+package until the `pip install` runs. If you already have an environment of
+that name from conda-forge, `conda env create` will refuse to create another
+over it; give this one a different name with
+`conda env create -n ismip7-scalars-dev -f ismip7_scalars_env.yml` and keep
+both.
 
 ```{warning}
 **Use those pip flags.** All dependencies come from conda-forge, and a plain
@@ -57,8 +65,9 @@ Three lists say the same thing and have to agree:
   a fresh solve of the ranges, so both ends of every range are verified rather
   than assumed.
 
-When a floor moves, move it in all three. {doc}`../user/installation` has the
-table of what each bound is for.
+When a floor moves, move it in all three. The conda-forge recipe carries a
+fourth copy, which is updated at the next release ({doc}`releasing`).
+{doc}`../user/installation` has the table of what each bound is for.
 
 `isschecker` is in that list as a data dependency rather than a code one: none
 of its functions are called, but the ISMIP7 data request it ships fixes the
