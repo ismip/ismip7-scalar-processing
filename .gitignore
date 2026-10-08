@@ -6,3 +6,6 @@ dist/
 *.whl
 .venv/
 docs/_build/
+.claude/worktrees/
+.claude/settings.local.json
+CLAUDE.local.md
