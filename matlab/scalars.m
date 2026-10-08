@@ -180,11 +180,14 @@ for i = 1:length(time_info.Attributes)
 end
 
 topg = double(ncread(find_model_file(exppath, 'topg', region, group, model, modelid, esm, forcingid, exp, configid), 'topg')); % (nx, ny, nt)
+% Volume above flotation is computed from the ice base; see get_vaf
+base = double(ncread(find_model_file(exppath, 'base', region, group, model, modelid, esm, forcingid, exp, configid), 'base'));
 
 % Historical experiment
 hist_lithk_file = find_model_file(histpath, 'lithk', region, group, model, modelid, esm, forcingid, hist, hist_configid);
 lithk_hist_all  = double(ncread(hist_lithk_file, 'lithk'));
 topg_hist_all   = double(ncread(find_model_file(histpath, 'topg', region, group, model, modelid, esm, forcingid, hist, hist_configid), 'topg'));
+base_hist_all   = double(ncread(find_model_file(histpath, 'base', region, group, model, modelid, esm, forcingid, hist, hist_configid), 'base'));
 time_hist       = double(ncread(hist_lithk_file, 'time'));
 n_hist          = size(lithk_hist_all, 3);
 
@@ -219,6 +222,7 @@ else
 end
 lithk_ref = lithk_hist_all(:,:,ref_idx);
 topg_ref  = topg_hist_all(:,:,ref_idx);
+base_ref  = base_hist_all(:,:,ref_idx);
 
 % If refyear not found in hist, search exp
 if ref_in_exp
@@ -228,6 +232,7 @@ if ref_in_exp
     end
     lithk_ref = lithk(:,:,ref_idx_exp);
     topg_ref  = topg(:,:,ref_idx_exp);
+    base_ref  = base(:,:,ref_idx_exp);
 end
 
 % Model density parameters
@@ -319,6 +324,7 @@ for igic = 1:2
     % Reference state for this GIC mode
     H0 = lithk_ref .* maxmask1 .* gic_mask;
     B0 = topg_ref;
+    Z0 = base_ref;
     % TODO clarify if S0=0 is correct for all models
     S0 = topg_ref * 0.0; % sea level fixed at 0
 
@@ -352,8 +358,9 @@ for igic = 1:2
             for n = 1:hist_n_out
                 H              = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* gic_mask;
                 B              = topg_hist_all(:,:,  hist_start + n);
-                VAF_hist(n)    = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
-                G20_hist(n)    = get_slc_G2020(H0, H, B0, B, A, c);
+                Z              = base_hist_all(:,:,  hist_start + n);
+                VAF_hist(n)    = get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c);
+                G20_hist(n)    = get_slc_G2020(H0, H, B0, B, Z0, Z, A, c);
             end
             if ~flg_A20_cumul
                 A20_hist = zeros(hist_n_out, 1);
@@ -369,8 +376,9 @@ for igic = 1:2
         for n = 1:nt
             H         = lithk(:,:,n) .* maxmask1 .* gic_mask;
             B         = topg(:,:,n);
-            sl_VAF(n) = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
-            sl_G20(n) = get_slc_G2020(H0, H, B0, B, A, c);
+            Z         = base(:,:,n);
+            sl_VAF(n) = get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c);
+            sl_G20(n) = get_slc_G2020(H0, H, B0, B, Z0, Z, A, c);
         end
 
         % ---- A2020 (method-dependent) ----
@@ -563,8 +571,8 @@ for ireg = 1:length(regionNames)
     if hist_n_out > 0
         for n = 1:hist_n_out
             H  = lithk_hist_all(:,:, hist_start + n) .* maxmask1;
-            B  = topg_hist_all(:,:,  hist_start + n);
-            hf = max(-B, 0) * c.RHOSW / c.RHOI;
+            Z  = base_hist_all(:,:,  hist_start + n);
+            hf = max(-Z, 0) * c.RHOSW / c.RHOI;
             lim_hist(n)     = sum(H .* A, 'all') * c.RHOI;
             limnsw_hist(n)  = sum(max(H - hf, 0) .* A, 'all') * c.RHOI;
             iareagr_hist(n) = sum(sftgrf_hist(:,:, hist_start + n) .* A, 'all');
@@ -578,8 +586,8 @@ for ireg = 1:length(regionNames)
     iareafl_list = zeros(nt, 1);
     for n = 1:nt
         H  = lithk(:,:,n) .* maxmask1;
-        B  = topg(:,:,n);
-        hf = max(-B, 0) * c.RHOSW / c.RHOI;
+        Z  = base(:,:,n);
+        hf = max(-Z, 0) * c.RHOSW / c.RHOI;
         lim_list(n)     = sum(H .* A, 'all') * c.RHOI;
         limnsw_list(n)  = sum(max(H - hf, 0) .* A, 'all') * c.RHOI;
         iareagr_list(n) = sum(sftgrf(:,:,n) .* A, 'all');
@@ -840,7 +848,8 @@ end
 % ---- VAF (Volume Above Flotation, ISMIP6 method) ----
 
 function vol = get_vaf(H, B, S, A, c)
-% Volume above flotation; B and S in absolute reference frame
+% Volume above flotation; B and S in absolute reference frame.  B is passed
+% the ice base rather than the bed: see get_vaf in slc/slc_vaf.py for why.
     hf   = max(S - B, 0.0) * c.RHOSW / c.RHOI;
     hall = max(H - hf, 0.0);
     vol  = sum(hall .* A, 'all');
@@ -874,9 +883,10 @@ function vol = get_vden_G2020(H, A, c)
     vol = sum(H .* (c.RHOI/c.RHOFW - c.RHOI/c.RHOSW) .* A, 'all');
 end
 
-function slc = get_slc_G2020(H0, H, B0, B, A, c)
-% eq. 12/15 — total SLC combining three components
-    slc_af  = -(get_vaf_G2020(H,  B,  A, c) - get_vaf_G2020(H0, B0, A, c)) / c.AO * c.RHOI/c.RHOSW;
+function slc = get_slc_G2020(H0, H, B0, B, Z0, Z, A, c)
+% eq. 12/15 — total SLC combining three components.  The above-flotation
+% term takes the ice base Z; the potential ocean volume takes the bed B.
+    slc_af  = -(get_vaf_G2020(H,  Z,  A, c) - get_vaf_G2020(H0, Z0, A, c)) / c.AO * c.RHOI/c.RHOSW;
     slc_pov = -(get_vpov_G2020(B,  A)        - get_vpov_G2020(B0, A))        / c.AO;
     slc_den = -(get_vden_G2020(H,  A, c)     - get_vden_G2020(H0, A, c))     / c.AO;
     slc = slc_af + slc_pov + slc_den;

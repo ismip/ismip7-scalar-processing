@@ -126,6 +126,15 @@ def masks_from_geometry(lithk, topg, rhoi=917.0, rhosw=1027.0):
     return grounded.astype(float), floating.astype(float)
 
 
+def base_from_geometry(lithk, topg, rhoi=917.0, rhosw=1027.0):
+    """The ice base: the bed under grounded ice, the flotation depth under
+    floating ice, and sea level or the land surface where there is no ice."""
+    grounded, floating = masks_from_geometry(lithk, topg, rhoi, rhosw)
+    return np.where(grounded > 0, topg,
+                    np.where(floating > 0, -lithk * rhoi / rhosw,
+                             np.maximum(topg, 0.0)))
+
+
 def write_data_files(datapath, region='AIS', with_basins=True):
     """Write the generic data files -- area factors, ice sheet and GIC masks.
 
@@ -196,7 +205,8 @@ def write_experiment(modelpath, region='AIS', group='ISMIP7', model='SYNTH1',
                      experiment='historical', configid='C001',
                      exp_group='CORE', start_year=1990, nyears=5,
                      initial=1200.0, thinning_per_step=20.0,
-                     variables=('lithk', 'topg', 'sftgrf', 'sftflf'),
+                     variables=('lithk', 'topg', 'base', 'sftgrf',
+                                'sftflf'),
                      fluxes=('acabf',)):
     """Write one experiment's model output.  Returns its directory.
 
@@ -214,6 +224,7 @@ def write_experiment(modelpath, region='AIS', group='ISMIP7', model='SYNTH1',
     fields = {
         'lithk': (lithk, 'm', 'land_ice_thickness'),
         'topg': (topg, 'm', 'bedrock_altitude'),
+        'base': (base_from_geometry(lithk, topg), 'm', 'base_altitude'),
         'sftgrf': (grounded, '1', 'grounded_ice_sheet_area_fraction'),
         'sftflf': (floating, '1', 'floating_ice_shelf_area_fraction'),
         'sftgif': ((lithk > 0).astype(float), '1', 'land_ice_area_fraction'),

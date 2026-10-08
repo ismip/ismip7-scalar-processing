@@ -116,7 +116,8 @@ finished. Anything other than 0 or 2 is a bug; please report it.
 
 Some inputs are only needed for part of the output. Without sftgrf and sftflf
 the state scalars are skipped and everything else is still written. Each flux
-variable is skipped on its own if its file is missing.
+variable is skipped on its own if its file is missing. Without base, the
+volume above flotation is computed from topg instead, with a warning.
 
 ## Next
 

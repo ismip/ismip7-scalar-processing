@@ -29,7 +29,8 @@ The Python behaviour exists for the batch driver, which has no MATLAB
 counterpart.
 
 **Optional variables.** Python treats `sftgrf`/`sftflf` and the flux variables
-as optional, skipping the output that needs them; MATLAB requires them.
+as optional, skipping the output that needs them, and computes the volume
+above flotation from `topg` when `base` is missing. MATLAB requires them all.
 
 **Variable metadata.** Python reads each scalar's `standard_name`, `units` and
 `long_name` from the data request in the installed `isschecker` package (see
