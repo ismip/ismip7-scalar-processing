@@ -10,11 +10,8 @@ integrated mass fluxes, for the whole ice sheet and optionally for each
 IMBIE3 basin.
 
 ```bash
-git clone https://github.com/ismip/ismip7-scalar-processing.git
-cd ismip7-scalar-processing
-conda env create -f ismip7_scalars_env.yml
+conda create -n ismip7-scalars -c conda-forge ismip7-scalars
 conda activate ismip7-scalars
-python -m pip install --no-deps --no-build-isolation .
 ismip7-scalars --region AIS --group VUW --model PISM1 \
     --experiment ssp585 --configid C007 --hist-configid C001
 ```
@@ -59,8 +56,9 @@ For each experiment, and for each mask you ask for:
 
 The tools are developed at
 [ismip/ismip7-scalar-processing](https://github.com/ismip/ismip7-scalar-processing)
-and will be released through conda-forge once the feedstock exists. Problems
-and questions belong in
+and released through
+[conda-forge](https://anaconda.org/conda-forge/ismip7-scalars). Problems and
+questions belong in
 [the issue tracker](https://github.com/ismip/ismip7-scalar-processing/issues).
 
 A MATLAB implementation of the same processing lives in the repository and is

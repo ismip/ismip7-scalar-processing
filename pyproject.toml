@@ -16,10 +16,10 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Topic :: Scientific/Engineering :: Atmospheric Science",
 ]
-# These must stay in sync with ismip7_scalars_env.yml.  The supported install
-# path is `pip install --no-deps --no-build-isolation .` into the conda
-# environment, so pip never resolves these; they are here so the metadata is
-# honest about what the package needs.
+# These must stay in sync with ismip7_scalars_env.yml and the conda-forge
+# recipe.  Both the recipe and a source install run
+# `pip install --no-deps --no-build-isolation .`, so pip never resolves these;
+# they are here so the metadata is honest about what the package needs.
 # isschecker is a data dependency, not a code one: the ISMIP7 data request
 # fixes the standard_name, units and long_name of every scalar this package
 # writes, and is read out of that package rather than copied into this one.

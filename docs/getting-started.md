@@ -2,14 +2,9 @@
 
 ## Install
 
-The package is not on conda-forge yet, so install from a checkout:
-
 ```bash
-git clone https://github.com/ismip/ismip7-scalar-processing.git
-cd ismip7-scalar-processing
-conda env create -f ismip7_scalars_env.yml
+conda create -n ismip7-scalars -c conda-forge ismip7-scalars
 conda activate ismip7-scalars
-python -m pip install --no-deps --no-build-isolation .
 ```
 
 You get three commands:
@@ -18,8 +13,15 @@ You get three commands:
 - `ismip7-scalars-ensemble` processes every experiment in a submission tree
 - `ismip7-scalars-set-params` writes the density file each model needs
 
-{doc}`user/installation` says what that installs and why the pip flags
-matter.
+New releases come often, with bug fixes and new features. Update before you
+process new output:
+
+```bash
+conda update -n ismip7-scalars -c conda-forge ismip7-scalars
+```
+
+{doc}`dev/source-install` covers installing from a clone if you mean to work on
+the package.
 
 ## Lay out your files
 
