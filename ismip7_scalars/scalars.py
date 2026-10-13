@@ -25,6 +25,7 @@ from ismip7_scalars.naming import (
     DEFAULTS,
     FILE_CONFIG,
     MissingInput,
+    OCX_REFYEAR,
     SELF_PAIRED_SCENARIOS,
     configid_to_exp_group,
     find_model_file,
@@ -243,7 +244,9 @@ def build_parser():
                              '(default: same as --configid)')
     parser.add_argument('--refyear', type=int, default=None,
                         help='Year to use as SLC reference '
-                             '(default: last timestep of hist experiment)')
+                             '(default: last timestep of hist experiment; '
+                             'a self-paired ocx run defaults to 2015, the '
+                             'state stamped 2015-01-01)')
     parser.add_argument('--datapath', default=None,
                         help='Path to generic data files '
                              '(default: ./Data/<region>)')
@@ -306,6 +309,12 @@ def settings_from_args(args, cwd=None):
         exp if (hist_configid == configid
                 and exp in SELF_PAIRED_SCENARIOS)
         else defaults['hist'])
+    # A self-paired ocx run measures from the end of nominal 2014 (stamped
+    # 2015), the same reference point as the projections — not from its own
+    # last step (2025). An explicit --refyear still wins.
+    refyear = args.refyear
+    if refyear is None and hist_configid == configid and exp == 'ocx':
+        refyear = OCX_REFYEAR
 
     return Settings(
         region=region,
@@ -324,7 +333,7 @@ def settings_from_args(args, cwd=None):
         modelpath=modelpath,
         params_path=args.params_path or modelpath,
         outpath=args.outpath or os.path.join(cwd, 'Output'),
-        refyear=args.refyear,
+        refyear=refyear,
         histout=args.histout,
         flg_mm=not args.no_mm,
         flg_bm=args.basins,

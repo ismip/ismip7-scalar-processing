@@ -45,6 +45,11 @@ if ~exist('hist',          'var') || isempty(hist)
     end
 end
 if ~exist('hist_exp_group','var') || isempty(hist_exp_group), hist_exp_group = exp_group;             end
+% ocx measures from the same point as the projections: the state stamped
+% 2015-01-01, the end of nominal 2014 (its own last step is 2025).
+if isempty(refyear) && strcmp(exp, 'ocx') && strcmp(hist_configid, configid)
+    refyear = 2015;
+end
 if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
 if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
 if ~exist('params_path',   'var') || isempty(params_path),   params_path   = modelpath;                end

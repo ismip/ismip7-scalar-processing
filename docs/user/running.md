@@ -37,7 +37,7 @@ from. By default that is the last timestep of the historical experiment.
 | `--hist` | historical experiment name | `historical`, or the experiment itself when self-paired |
 | `--hist-configid` | its configid | same as `--configid` |
 | `--hist-exp-group` | its experiment group | same as `--exp-group` |
-| `--refyear` | use this year as the reference instead | last historical step |
+| `--refyear` | use this year as the reference instead | last historical step; the end of nominal 2014 for ocx |
 
 A CORE projection normally needs `--hist-configid`, because C001 is the
 shared historical run for the C003, C005 and C007 projections:
@@ -52,11 +52,12 @@ To process the historical run on its own, give it as the experiment too
 prepended.
 
 The `ocx` run (C011) is its own reference the same way: it has no separate
-historical run, and the 2014 state inside the run is the reference year.
+historical run, and the state at the end of nominal 2014 (stamped 2015,
+inside the run) is its reference — the same point the projections measure
+from, so it needs no option.
 
 ```bash
-ismip7-scalars --region GrIS --configid C011 --experiment ocx \
-    --hist-configid C011 --refyear 2014
+ismip7-scalars --region GrIS --configid C011 --experiment ocx
 ```
 
 The `ctrl` runs (C009, C010) are projections, not self-paired: they pair

@@ -21,7 +21,8 @@ Set workspace variables before `run()` to override any default: `group`,
 `datapath`, `modelpath`, `params_path`, `outpath`. They correspond one for one
 with the command-line options in {doc}`../user/running`; `flg_bm` is
 `--basins` and `flg_mm=false` is `--no-mm`. Resolution is auto-detected the same
-way.
+way. As in Python, `refyear` defaults to the last hist step, or 2015 for a
+self-paired ocx run.
 
 ## Where the two differ
 

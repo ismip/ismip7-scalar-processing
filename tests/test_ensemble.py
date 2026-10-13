@@ -177,9 +177,9 @@ class TestBuildCommand:
         assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
         assert 'self-paired' in note
 
-    def test_ocx_is_self_paired_with_2014_reference(self, tmp_path):
-        """ocx (C011) has no historical run: it is its own reference, and the
-        2014 state inside the run is the reference year."""
+    def test_ocx_is_self_paired(self, tmp_path):
+        """ocx (C011) has no historical run: it is its own reference. The
+        2015 reference year is defaulted inside scalars, not on this command."""
         root = str(tmp_path)
         unit = make_unit(root, configid='C011', experiment='ocx',
                          esm='ERA5', years='1958-2025')
@@ -187,7 +187,7 @@ class TestBuildCommand:
         assert cmd is not None
         assert cmd[cmd.index('--hist-configid') + 1] == 'C011'
         assert cmd[cmd.index('--hist') + 1] == 'ocx'
-        assert cmd[cmd.index('--refyear') + 1] == '2014'
+        assert '--refyear' not in cmd
         assert 'self-paired' in note
 
     def test_ctrl_pairs_with_its_historical(self, tmp_path):

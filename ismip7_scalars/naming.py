@@ -55,6 +55,11 @@ EXP_GROUP_FROM_PREFIX = {'C': 'CORE', 'E': 'ESM', 'P': 'PPE'}
 #: them with, so the reference state comes from within the run itself.
 SELF_PAIRED_SCENARIOS = {'historical', 'ocx'}
 
+#: ``ocx`` (C011) measures from the end of nominal 2014 — the state stamped
+#: 2015-01-01, the same reference point as the projections — not from its own
+#: last step (2025).
+OCX_REFYEAR = 2015
+
 
 class MissingInput(Exception):
     """A required input file or directory is not there.

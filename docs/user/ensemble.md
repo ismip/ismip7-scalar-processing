@@ -35,8 +35,9 @@ processed as though it were something else.
 The CORE experiment table bundled with the package gives each configid its
 scenario and forcing ESM. A projection is paired with the historical run
 driven by the same ESM: CESM projections with C001, MRI projections with
-C002. Historical and ocx experiments are their own reference; ctrl is
-paired with its historical run like the ssp scenarios.
+C002. Historical and ocx experiments are their own reference — ocx from the
+state at the end of nominal 2014 (stamped 2015), which the pipeline defaults —
+and ctrl is paired with its historical run like the ssp scenarios.
 
 For a configid the table does not know, such as a future ESM or PPE
 experiment, the driver pairs an even configid with the odd one below it. If

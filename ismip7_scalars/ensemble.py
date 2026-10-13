@@ -143,10 +143,8 @@ def build_command(args, unit, core):
     if scenario in SELF_PAIRED_SCENARIOS:
         cmd += ['--hist', meta['experiment'],
                 '--hist-configid', configid, '--hist-exp-group', exp_group]
-        # ocx (C011) is branched off 1958 of C001: its reference year 2014 is
-        # a state inside the run, not its last timestep (2025).
-        if scenario == 'ocx':
-            cmd += ['--refyear', '2014']
+        # ocx (C011) defaults its reference inside scalars to the state
+        # stamped 2015, the end of nominal 2014 — not its last step (2025).
         note = f'self-paired ({scenario})'
     else:
         hcid = hist_configid_for(configid, core)
