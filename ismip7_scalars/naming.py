@@ -51,6 +51,10 @@ FILENAME_FIELDS = ('var', 'region', 'group', 'model', 'modelid', 'esm',
 #: Directory level a configid belongs under, from its prefix letter.
 EXP_GROUP_FROM_PREFIX = {'C': 'CORE', 'E': 'ESM', 'P': 'PPE'}
 
+#: Scenarios that are their own reference: there is no earlier run to pair
+#: them with, so the reference state comes from within the run itself.
+SELF_PAIRED_SCENARIOS = {'historical', 'ocx'}
+
 
 class MissingInput(Exception):
     """A required input file or directory is not there.

@@ -31,6 +31,9 @@ CORE = {
     'C002': {'scenario': 'historical', 'esm': 'MRI-ESM2-0'},
     'C003': {'scenario': 'ssp370', 'esm': 'CESM-WACCM'},
     'C004': {'scenario': 'ssp370', 'esm': 'MRI-ESM2-0'},
+    'C009': {'scenario': 'ctrl', 'esm': 'CESM-WACCM'},
+    'C010': {'scenario': 'ctrl', 'esm': 'MRI-ESM2-0'},
+    'C011': {'scenario': 'ocx', 'esm': '-'},
 }
 
 
@@ -75,12 +78,11 @@ class TestLoadCoreCsv:
             assert hcid is not None, cid
             assert core[hcid]['scenario'] == 'historical'
 
-    def test_experiment_without_a_forcing_esm_is_left_to_a_human(self):
-        """``ocx`` (C011) has no ESM column, so no historical run follows from it.
+    def test_experiment_without_a_forcing_esm_has_no_parity_pair(self):
+        """``ocx`` (C011) has no ESM column, so the parity rule gives no pair.
 
-        The old parity rule handed back C011 itself, which made the run its own
-        reference: every value would then be measured against the run's last
-        timestep rather than a historical state.
+        The driver handles C011 as a self-paired scenario instead of asking
+        this rule, which must never hand a configid back to itself.
         """
         core = load_core_csv()
         assert core['C011']['esm'] == '-'
@@ -174,6 +176,33 @@ class TestBuildCommand:
         cmd, note = build_command(make_args(root), unit, CORE)
         assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
         assert 'self-paired' in note
+
+    def test_ocx_is_self_paired_with_2014_reference(self, tmp_path):
+        """ocx (C011) has no historical run: it is its own reference, and the
+        2014 state inside the run is the reference year."""
+        root = str(tmp_path)
+        unit = make_unit(root, configid='C011', experiment='ocx',
+                         esm='ERA5', years='1958-2025')
+        cmd, note = build_command(make_args(root), unit, CORE)
+        assert cmd is not None
+        assert cmd[cmd.index('--hist-configid') + 1] == 'C011'
+        assert cmd[cmd.index('--hist') + 1] == 'ocx'
+        assert cmd[cmd.index('--refyear') + 1] == '2014'
+        assert 'self-paired' in note
+
+    def test_ctrl_pairs_with_its_historical(self, tmp_path):
+        """ctrl (C009) is a projection: it pairs with C001, not with itself."""
+        root = str(tmp_path)
+        make_unit(root, configid='C001', experiment='historical',
+                  years='1850-2014')
+        unit = make_unit(root, configid='C009', experiment='ctrl',
+                         years='2015-2300')
+        cmd, note = build_command(make_args(root), unit, CORE)
+        assert cmd is not None
+        assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
+        assert cmd[cmd.index('--hist') + 1] == 'historical'
+        assert 'hist C001' in note
+        assert 'self-paired' not in note
 
     def test_invokes_the_installed_module(self, tmp_path):
         root = str(tmp_path)

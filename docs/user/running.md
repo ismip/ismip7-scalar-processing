@@ -34,7 +34,7 @@ from. By default that is the last timestep of the historical experiment.
 
 | Option | Meaning | Default |
 |---|---|---|
-| `--hist` | historical experiment name | historical |
+| `--hist` | historical experiment name | `historical`, or the experiment itself when self-paired |
 | `--hist-configid` | its configid | same as `--configid` |
 | `--hist-exp-group` | its experiment group | same as `--exp-group` |
 | `--refyear` | use this year as the reference instead | last historical step |
@@ -50,6 +50,17 @@ ismip7-scalars --region AIS --configid C007 --experiment ssp585 \
 To process the historical run on its own, give it as the experiment too
 (`--experiment historical`). It is then its own reference and nothing is
 prepended.
+
+The `ocx` run (C011) is its own reference the same way: it has no separate
+historical run, and the 2014 state inside the run is the reference year.
+
+```bash
+ismip7-scalars --region GrIS --configid C011 --experiment ocx \
+    --hist-configid C011 --refyear 2014
+```
+
+The `ctrl` runs (C009, C010) are projections, not self-paired: they pair
+with the historical run of their forcing ESM like the `ssp` scenarios.
 
 ```{note}
 `--refyear` takes a **timestamp** year, which for a state variable is one more

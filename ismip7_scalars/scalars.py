@@ -25,6 +25,7 @@ from ismip7_scalars.naming import (
     DEFAULTS,
     FILE_CONFIG,
     MissingInput,
+    SELF_PAIRED_SCENARIOS,
     configid_to_exp_group,
     find_model_file,
     make_file_stem,
@@ -297,20 +298,28 @@ def settings_from_args(args, cwd=None):
     configid = args.configid or defaults['configid']
     exp_group = args.exp_group or configid_to_exp_group(configid)
     modelpath = args.modelpath or os.path.join(cwd, 'Models', region)
+    exp = args.experiment or defaults['experiment']
+    hist_configid = args.hist_configid or configid
+    # A run that is its own reference pairs with itself: the hist experiment
+    # is the projection experiment itself, not 'historical'.
+    hist = args.hist or (
+        exp if (hist_configid == configid
+                and exp in SELF_PAIRED_SCENARIOS)
+        else defaults['hist'])
 
     return Settings(
         region=region,
         group=args.group or defaults['group'],
         model=args.model or defaults['model'],
-        exp=args.experiment or defaults['experiment'],
+        exp=exp,
         modelid=args.modelid or defaults['modelid'],
         esm=args.esm or defaults['esm'],
         forcingid=args.forcingid or defaults['forcingid'],
         configid=configid,
         exp_group=exp_group,
-        hist=args.hist or defaults['hist'],
+        hist=hist,
         hist_exp_group=args.hist_exp_group or exp_group,
-        hist_configid=args.hist_configid or configid,
+        hist_configid=hist_configid,
         datapath=args.datapath or os.path.join(cwd, 'Data', region),
         modelpath=modelpath,
         params_path=args.params_path or modelpath,

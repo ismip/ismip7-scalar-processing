@@ -24,15 +24,11 @@ import subprocess
 import sys
 
 from ismip7_scalars import __version__
-from ismip7_scalars.naming import parse_ismip7_name
+from ismip7_scalars.naming import SELF_PAIRED_SCENARIOS, parse_ismip7_name
 from ismip7_scalars.paths import core_experiments_path
 
 EXP_GROUP_RE = re.compile(r'^(CORE|ESM|PPE)$')
 CONFIGID_RE = re.compile(r'^[CEP]\d{3}$')
-
-#: Scenarios that are their own reference: there is no earlier run to pair
-#: them with, so the reference state comes from within the run itself.
-SELF_PAIRED_SCENARIOS = {'historical', 'ctrl'}
 
 
 def load_core_csv(path=None):
@@ -147,6 +143,10 @@ def build_command(args, unit, core):
     if scenario in SELF_PAIRED_SCENARIOS:
         cmd += ['--hist', meta['experiment'],
                 '--hist-configid', configid, '--hist-exp-group', exp_group]
+        # ocx (C011) is branched off 1958 of C001: its reference year 2014 is
+        # a state inside the run, not its last timestep (2025).
+        if scenario == 'ocx':
+            cmd += ['--refyear', '2014']
         note = f'self-paired ({scenario})'
     else:
         hcid = hist_configid_for(configid, core)
