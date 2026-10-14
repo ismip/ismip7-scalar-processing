@@ -235,7 +235,8 @@ def build_parser():
                         help='Experiment directory name (CORE, ESM, or PPE)')
     parser.add_argument('--hist', default=None,
                         help='Historical experiment name '
-                             '(default: region-specific)')
+                             '(default: historical, or ocx when '
+                             '--experiment is ocx)')
     parser.add_argument('--hist-exp-group', default=None,
                         help='History experiment directory '
                              '(default: same as --exp-group)')
