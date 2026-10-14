@@ -105,6 +105,23 @@ class TestSettings:
                                           'C007'])
         assert settings_from_args(args).hist_configid == 'C007'
 
+    def test_hist_defaults_to_exp_for_ocx(self):
+        """``ocx`` (C011) is its own reference, so --hist follows it and the
+        reference year defaults to 2015, the end of nominal 2014."""
+        args = build_parser().parse_args(['--region', 'GrIS', '--experiment',
+                                          'ocx', '--configid', 'C011'])
+        settings = settings_from_args(args)
+        assert settings.hist == 'ocx'
+        assert settings.hist_configid == 'C011'
+        assert settings.refyear == 2015
+
+    def test_hist_still_defaults_to_historical_for_ctrl(self):
+        """``ctrl`` is a projection: it pairs with a historical run, never
+        with itself, so --hist stays 'historical' without --hist-configid."""
+        args = build_parser().parse_args(['--region', 'GrIS', '--experiment',
+                                          'ctrl', '--configid', 'C009'])
+        assert settings_from_args(args).hist == 'historical'
+
     def test_params_path_defaults_to_modelpath(self):
         args = build_parser().parse_args(['--region', 'AIS', '--modelpath',
                                           '/models'])
@@ -675,6 +692,52 @@ class TestHistoricalRunAlone:
         # The reference is the last timestep, so the series ends at zero.
         assert abs(float(values[-1])) < 1e-12
         assert values[0] < 0
+
+
+class TestOcxRun:
+    def test_ocx_defaults_its_reference_to_2015(self, tmp_path):
+        """ocx (C011) is its own reference: it defaults to the state stamped
+        2015-01-01, the end of nominal 2014 — the same point the projections
+        measure from, and not the run's last step.
+
+        Neither ``--hist`` nor ``--refyear`` is given on purpose: for a
+        self-paired scenario, ``--hist`` follows the experiment and the
+        reference year is the ocx default.
+        """
+        root = str(tmp_path / 'sub')
+        datapath = synthetic.write_data_files(
+            os.path.join(root, 'Data', 'GrIS'), region='GrIS')
+        modelpath = os.path.join(root, 'Models', 'GrIS')
+        synthetic.write_params(modelpath)
+        synthetic.write_experiment(modelpath, region='GrIS',
+                                   experiment='ocx', configid='C011',
+                                   esm='ERA5', forcingid='f001',
+                                   start_year=2012, nyears=5)
+        outpath = tmp_path / 'out'
+        rc = main(['--region', 'GrIS', '--experiment', 'ocx',
+                   '--configid', 'C011', '--esm', 'ERA5',
+                   '--datapath', datapath, '--modelpath', modelpath,
+                   '--outpath', str(outpath)])
+        assert rc == 0
+        ncpath = os.path.join(str(outpath), 'nc', 'GrIS', 'ISMIP7', 'SYNTH1',
+                              'CORE', 'C011')
+        matches = glob.glob(os.path.join(ncpath, 'slvaf_*.nc'))
+        assert len(matches) == 1
+        with nc.Dataset(matches[0]) as ds:
+            values = np.array(ds.variables['slvaf'][:])
+            dates = nc.num2date(ds.variables['time'][:],
+                                ds.variables['time'].units,
+                                calendar=ds.variables['time'].calendar)
+        years = [d.year for d in dates]
+        # Five timesteps, not five plus a prepended copy of themselves.
+        assert len(values) == 5
+        assert years == [2013, 2014, 2015, 2016, 2017]
+        # 2015 (end of nominal 2014) is the reference, so the series is zero
+        # there and the run thins through it: negative before, positive after.
+        idx = years.index(2015)
+        assert abs(float(values[idx])) < 1e-12
+        assert values[0] < 0
+        assert values[-1] > 0
 
 
 class TestVersionAndHelp:

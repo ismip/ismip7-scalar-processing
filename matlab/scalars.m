@@ -33,9 +33,23 @@ if ~exist('esm',           'var') || isempty(esm),           esm           = def
 if ~exist('forcingid',     'var') || isempty(forcingid),     forcingid     = def_forcingid;            end
 if ~exist('configid',      'var') || isempty(configid),      configid      = def_configid;             end
 if ~exist('exp_group',     'var') || isempty(exp_group),     exp_group     = configid_to_exp_group(configid); end
-if ~exist('hist',          'var') || isempty(hist),          hist          = def_hist;                  end
-if ~exist('hist_exp_group','var') || isempty(hist_exp_group),hist_exp_group = exp_group;               end
-if ~exist('hist_configid', 'var') || isempty(hist_configid), hist_configid  = configid;                end
+if ~exist('hist_configid', 'var') || isempty(hist_configid), hist_configid = configid; end
+if ~exist('hist',          'var') || isempty(hist)
+    % A run that is its own reference pairs with itself: the hist experiment
+    % is the projection experiment itself, not 'historical'.
+    if strcmp(hist_configid, configid) && ...
+       any(strcmp(exp, {'historical', 'ocx'}))
+        hist = exp;
+    else
+        hist = def_hist;
+    end
+end
+if ~exist('hist_exp_group','var') || isempty(hist_exp_group), hist_exp_group = exp_group;             end
+% ocx measures from the same point as the projections: the state stamped
+% 2015-01-01, the end of nominal 2014 (its own last step is 2025).
+if isempty(refyear) && strcmp(exp, 'ocx') && strcmp(hist_configid, configid)
+    refyear = 2015;
+end
 if ~exist('datapath',      'var') || isempty(datapath),      datapath      = ['../Data/'   region];   end
 if ~exist('modelpath',     'var') || isempty(modelpath),     modelpath     = ['../Models/' region];   end
 if ~exist('params_path',   'var') || isempty(params_path),   params_path   = modelpath;                end

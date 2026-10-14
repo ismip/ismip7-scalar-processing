@@ -32,12 +32,15 @@ parser.add_argument('--mat-csv', required=True,
                     help='directory holding the MATLAB sl_*.csv')
 parser.add_argument('--rel-tol', type=float, default=1e-9,
                     help='relative tolerance on the SLC values '
-                         '(default 1e-9, for the %.10g MATLAB formatting)')
+                         '(default 1e-9, for the %%.10g MATLAB formatting)')
 parser.add_argument('--abs-tol', type=float, default=1e-12,
                     help='absolute floor in metres; a row passes if it is '
                          'within --abs-tol OR --rel-tol (default 1e-12, so '
                          'near-zero basin values are not judged on relative '
                          'error)')
+parser.add_argument('--scalar', default=None,
+                    help='restrict the comparison to one SLC method '
+                         '(slvaf, slg20 or sla20); default compares every row')
 args = parser.parse_args()
 
 py_files = sorted(glob.glob(os.path.join(args.py_csv, 'sl_*.csv')))
@@ -73,7 +76,11 @@ for py_path in py_files:
     key_cols = [header.index(c) for c in ('region', 'scalar')]
 
     def keyed(rows):
-        return {tuple(r[i] for i in key_cols): r for r in rows[1:]}
+        d = {tuple(r[i] for i in key_cols): r for r in rows[1:]}
+        if args.scalar is not None:
+            si = header.index('scalar')
+            d = {k: r for k, r in d.items() if r[si] == args.scalar}
+        return d
 
     py_keyed = keyed(py_rows)
     mat_keyed = keyed(mat_rows)
