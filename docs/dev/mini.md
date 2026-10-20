@@ -50,7 +50,10 @@ unresolved. `tests/test_mini_smoke.py` asserts both.
   `params.nc`;
 - area weighting is `dx²` directly;
 - it writes the volume diagnostics (`slc_Vtot`, `slc_Vgr`, `slc_Vfl`) that the
-  full processing does not.
+  full processing does not;
+- it computes VAF from `topg`, because the MINI inputs have no `base`. That is
+  where the few per cent between the two grids in `exp0` comes from. The full
+  processing uses `base`, which avoids it (see {doc}`../user/slc-methods`).
 
 It shares the `ismip7_scalars.slc` package with the real processing, which is
 the part worth cross-checking; the rest is scaffolding around it.
