@@ -57,6 +57,12 @@ if ~exist('params_path',   'var') || isempty(params_path),   params_path   = mod
 % Description for netcdf global attribute
 file_description = 'ISMIP7 scalar output. Heiko Goelzer 2026, heig@norceresearch.no';
 
+% Global attributes the compliance checker requires, copied from the input
+% files, and the netCDF default fill value for single precision (the output
+% dtype), written as _FillValue on the output variables.
+req_global_attrs = {'group', 'model', 'contact_name', 'contact_email', 'crs'};
+nc_fill_f4 = single(9.969209968386869e+36);
+
 % Options
 % A2020: seamless hist+exp cumulative (true, default) vs. relative to reference (false)
 flg_A20_cumul = true;
@@ -258,7 +264,8 @@ c.AO    = oarea;
 
 % Model masks (used for ST scalars iareagr/iareafl)
 sftgif = double(ncread(find_model_file(exppath, 'sftgif', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgif'));
-sftgrf = double(ncread(find_model_file(exppath, 'sftgrf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgrf'));
+sftgrf_file = find_model_file(exppath, 'sftgrf', region, group, model, modelid, esm, forcingid, exp, configid);
+sftgrf = double(ncread(sftgrf_file, 'sftgrf'));
 sftflf = double(ncread(find_model_file(exppath, 'sftflf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftflf'));
 
 % Load hist mask fields needed for ST scalars (iareagr, iareafl)
@@ -472,11 +479,12 @@ for igic = 1:2
                 scfile = fullfile(ncpath, [varname gic_suffix '_' dispName '_' file_stem '.nc']);
             end
             if exist(scfile, 'file'), delete(scfile); end
-            nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4');
-            nccreate(scfile, varname,  'Dimensions', {'time', Inf});
+            nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'single', 'FillValue', nc_fill_f4);
+            nccreate(scfile, varname,  'Dimensions', {'time', Inf}, 'Datatype', 'single', 'FillValue', nc_fill_f4);
             ncwrite(scfile,  'time',   time_out(:));
             ncwrite(scfile,  varname,  sl_data(:));
             ncwriteatt(scfile, '/',      'description', file_description);
+            write_req_global_attrs(scfile, lithk_tmp, req_global_attrs);
             ncwriteatt(scfile, 'time',   'units',        time_units);
             ncwriteatt(scfile, 'time',   'long_name',    time_long_name);
             ncwriteatt(scfile, 'time',   'calendar',     time_calendar);
@@ -625,11 +633,16 @@ for ireg = 1:length(regionNames)
             scfile = fullfile(ncpath, [varname '_' regionName '_' file_stem '.nc']);
         end
         if exist(scfile, 'file'), delete(scfile); end
-        nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'double');
-        nccreate(scfile, varname,  'Dimensions', {'time', Inf}, 'Datatype', 'double');
+        nccreate(scfile, 'time',   'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'single', 'FillValue', nc_fill_f4);
+        nccreate(scfile, varname,  'Dimensions', {'time', Inf}, 'Datatype', 'single', 'FillValue', nc_fill_f4);
         ncwrite(scfile,  'time',   time_out(:));
         ncwrite(scfile,  varname,  data_out(:));
         ncwriteatt(scfile, '/',      'description', file_description);
+        if any(strcmp(varname, {'iareagr', 'iareafl'}))
+            write_req_global_attrs(scfile, sftgrf_file, req_global_attrs);
+        else
+            write_req_global_attrs(scfile, lithk_tmp, req_global_attrs);
+        end
         ncwriteatt(scfile, 'time',   'units',        time_units);
         ncwriteatt(scfile, 'time',   'long_name',    time_long_name);
         ncwriteatt(scfile, 'time',   'calendar',     time_calendar);
@@ -689,16 +702,31 @@ for ifl = 1:size(fl_scalar_specs, 1)
             case 'calendar',  fl_time_calendar  = fl_tv_info.Attributes(k).Value;
         end
     end
+    fl_bounds_exp = read_time_bounds(fl_exp_file, fl_tv_info, numel(fl_time_exp));
 
     % Optionally load hist FL data
-    fl_hist      = [];
-    fl_time_hist = [];
+    fl_hist        = [];
+    fl_time_hist   = [];
+    fl_bounds_hist = [];
     if hist_n_out > 0 && ~strcmp(exp, hist)
         try
             fl_hist_file = find_model_file(histpath, input_var, region, group, model, modelid, esm, forcingid, hist, hist_configid);
             fl_hist      = double(ncread(fl_hist_file, input_var));
             fl_hist(isnan(fl_hist)) = 0;
-            fl_time_hist = double(ncread(fl_hist_file, 'time'));
+            htv_info = ncinfo(fl_hist_file, 'time');
+            h_time   = double(ncread(fl_hist_file, 'time'));
+            h_units  = get_nc_attr(htv_info, 'units', '');
+            h_cal    = get_nc_attr(htv_info, 'calendar', '');
+            % Re-express hist times and bounds on the projection axis when
+            % the two runs do not share a time encoding.
+            fl_time_hist = hist_times_on_exp_axis(h_time, h_units, h_cal, ...
+                                                  fl_time_units, fl_time_calendar);
+            fl_bounds_hist = read_time_bounds(fl_hist_file, htv_info, numel(h_time));
+            if ~isempty(fl_bounds_hist)
+                fl_bounds_hist = hist_times_on_exp_axis(fl_bounds_hist, ...
+                                                        h_units, h_cal, ...
+                                                        fl_time_units, fl_time_calendar);
+            end
         catch
             % hist FL file missing; output exp period only
         end
@@ -718,9 +746,15 @@ for ifl = 1:size(fl_scalar_specs, 1)
         end
         fl_hist_start = n_fl_hist - fl_n_out;
         fl_time_out_fl = [fl_time_hist(fl_hist_start+1 : end); fl_time_exp(:)];
+        if ~isempty(fl_bounds_exp) && ~isempty(fl_bounds_hist)
+            fl_bounds = [fl_bounds_hist(fl_hist_start+1 : end, :); fl_bounds_exp];
+        else
+            fl_bounds = [];
+        end
     else
         fl_hist_start = n_fl_hist;
         fl_time_out_fl = fl_time_exp(:);
+        fl_bounds = fl_bounds_exp;
     end
 
     % FL nominal year: Jul 1 of year N → year N (no -1 offset unlike ST)
@@ -768,11 +802,19 @@ for ifl = 1:size(fl_scalar_specs, 1)
             scfile = fullfile(ncpath, [tendvarname '_' regionName '_' fl_file_stem '.nc']);
         end
         if exist(scfile, 'file'), delete(scfile); end
-        nccreate(scfile, 'time',        'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'double');
-        nccreate(scfile, tendvarname,   'Dimensions', {'time', Inf}, 'Datatype', 'double');
+        nccreate(scfile, 'time',        'Dimensions', {'time', Inf}, 'Format', 'netcdf4', 'Datatype', 'single', 'FillValue', nc_fill_f4);
+        nccreate(scfile, tendvarname,   'Dimensions', {'time', Inf}, 'Datatype', 'single', 'FillValue', nc_fill_f4);
         ncwrite(scfile,  'time',        fl_time_out_fl(:));
         ncwrite(scfile,  tendvarname,   fl_integral(:));
+        if ~isempty(fl_bounds)
+            nccreate(scfile, 'time_bounds', 'Dimensions', {'time', Inf, 'nv', 2}, ...
+                     'Datatype', 'single', 'FillValue', nc_fill_f4);
+            ncwrite(scfile, 'time_bounds', fl_bounds);
+            ncwriteatt(scfile, 'time', 'bounds', 'time_bounds');
+            ncwriteatt(scfile, 'time_bounds', 'units', fl_time_units);
+        end
         ncwriteatt(scfile, '/',           'description', file_description);
+        write_req_global_attrs(scfile, fl_exp_file, req_global_attrs);
         ncwriteatt(scfile, 'time',        'units',        fl_time_units);
         ncwriteatt(scfile, 'time',        'long_name',    fl_time_long_name);
         ncwriteatt(scfile, 'time',        'calendar',     fl_time_calendar);
@@ -795,6 +837,115 @@ end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Local functions — year decoding
+
+function val = get_nc_attr(info, name, default)
+% The value of one attribute of a variable (or file), or a default.
+    val = default;
+    idx = find(strcmp({info.Attributes.Name}, name), 1);
+    if ~isempty(idx)
+        val = info.Attributes(idx).Value;
+    end
+end
+
+function write_req_global_attrs(scfile, infile, req_attrs)
+% Copy the compliance checker's required global attributes from the input
+% file the scalar was computed from.  A missing attribute is warned about
+% and simply not written; the checker will flag its absence.
+    for ga = req_attrs
+        try
+            ncwriteatt(scfile, '/', ga{1}, ncreadatt(infile, '/', ga{1}));
+        catch
+            fprintf('Warning: input file %s is missing global attribute %s\n', infile, ga{1});
+        end
+    end
+end
+
+function tb = read_time_bounds(ncfile, tv_info, ntime)
+% The time bounds a file carries for its time variable, as (ntime, 2).
+% The bounds variable's name comes from the file's bounds attribute rather
+% than being assumed, and either dimension order -- (time, nv) or (nv, time)
+% -- is accepted.  A missing or malformed bounds array returns empty: the
+% output is then written without bounds, which the compliance checker will
+% flag on its own.
+    tb = [];
+    bname = get_nc_attr(tv_info, 'bounds', '');
+    if isempty(bname)
+        fprintf('Warning: no time bounds in %s; output will lack them\n', ncfile);
+        return;
+    end
+    try
+        binfo = ncinfo(ncfile, bname);
+        data = double(ncread(ncfile, bname));
+    catch
+        fprintf('Warning: time bounds variable %s not readable in %s; output will lack bounds\n', bname, ncfile);
+        return;
+    end
+    if any(isnan(data(:)))
+        % Missing (fill-value) cells count as no bounds at all, like the
+        % Python side treats masked cells.
+        fprintf('Warning: time bounds in %s have missing values; output will lack bounds\n', ncfile);
+        return;
+    end
+    time_dim = tv_info.Dimensions(1).Name;
+    dimnames = {binfo.Dimensions.Name};
+    if numel(dimnames) == 2 && strcmp(dimnames{1}, time_dim) ...
+            && size(data, 1) == ntime && size(data, 2) == 2
+        tb = data;
+    elseif numel(dimnames) == 2 && strcmp(dimnames{2}, time_dim) ...
+            && size(data, 1) == 2 && size(data, 2) == ntime
+        tb = data.';
+    else
+        fprintf('Warning: time bounds in %s have shape [%d %d], expected [%d 2]; output will lack bounds\n', ncfile, size(data, 1), size(data, 2), ntime);
+    end
+end
+
+function t_out = hist_times_on_exp_axis(t_hist, hist_units, hist_calendar, exp_units, exp_calendar)
+% Re-express historical times in the projection file's time units.
+% The two runs are written independently and need not share a time origin;
+% concatenating raw numeric values would misplace the historical part.
+    if strcmp(hist_units, exp_units) && strcmp(hist_calendar, exp_calendar)
+        t_out = t_hist;
+        return;
+    end
+    dt = time_to_datetime(t_hist, hist_units);
+    t_out = datetime_to_units(dt, exp_units);
+end
+
+function dt = time_to_datetime(t, units)
+% Decode a time vector (any shape) to MATLAB datetime, calendar-aware.
+    if contains(units, 'day')
+        dt = parse_time_origin(units) + days(t);
+    elseif contains(units, 'year')
+        dt = parse_time_origin(units) + years(t);
+    else
+        error('Unsupported time unit: %s', units);
+    end
+end
+
+function d = datetime_to_units(dt, units)
+% Encode a datetime (any shape) as numeric values in the given time units.
+    if contains(units, 'day')
+        d = days(dt - parse_time_origin(units));
+    elseif contains(units, 'year')
+        d = years(dt - parse_time_origin(units));
+    else
+        error('Unsupported time unit: %s', units);
+    end
+end
+
+function origin = parse_time_origin(units)
+% The datetime origin a UDUNITS-style "since" string refers to.
+    tok = regexp(units, 'since\s+(\d{4})-(\d{2})-(\d{2})', 'tokens');
+    if ~isempty(tok)
+        origin = datetime(str2double(tok{1}{1}), str2double(tok{1}{2}), str2double(tok{1}{3}));
+    else
+        tok = regexp(units, 'since\s+(\d{4})', 'tokens');
+        if isempty(tok)
+            error('Cannot parse origin from time units: %s', units);
+        end
+        origin = datetime(str2double(tok{1}{1}), 1, 1);
+    end
+end
 
 function yrs = decode_years(t, units)
 % Decode a time vector to calendar years using MATLAB datetime (calendar-aware).

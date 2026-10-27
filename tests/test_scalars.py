@@ -11,6 +11,8 @@ from __future__ import annotations
 import csv
 import glob
 import os
+import shutil
+from types import SimpleNamespace
 
 import netCDF4 as nc
 import numpy as np
@@ -326,6 +328,244 @@ class TestOutputMetadata:
         assert attrs['units'] == 'm'
         assert attrs['long_name'] == 'Sea level contribution based on Vaf'
 
+    def _ds(self, outpath, varname):
+        matches = glob.glob(os.path.join(nc_dir(outpath), f'{varname}_*.nc'))
+        assert len(matches) == 1
+        return nc.Dataset(matches[0])
+
+    def test_checker_global_attrs_are_copied_from_the_input(self, default_run):
+        """The compliance checker requires group, model, contact_name,
+        contact_email and crs on every file; they are copied from the model
+        files, which carry them."""
+        with self._ds(default_run, 'iareafl') as ds:
+            assert ds.group == 'ISMIP7'
+            assert ds.model == 'SYNTH1'
+            assert ds.contact_name == 'Synthetic Contact'
+            assert ds.contact_email == 'synthetic@example.org'
+            assert ds.crs == 'epsg:3031'
+
+    def test_variables_are_single_precision_with_default_fill(self,
+                                                              default_run):
+        """The checker errors on float64 variables and on a missing
+        ``_FillValue``; both must be right on every output file."""
+        with self._ds(default_run, 'iareafl') as ds:
+            assert ds.variables['iareafl'].dtype == np.float32
+            assert ds.variables['time'].dtype == np.float32
+            assert ds.variables['iareafl']._FillValue == \
+                nc.default_fillvals['f4']
+
+    def test_missing_input_attrs_warn_but_do_not_stop_the_run(
+            self, submission, tmp_path, capsys):
+        """A submission without the global attributes still gets output; the
+        warning points at what the checker will reject."""
+        submission = _copied_submission(submission, tmp_path)
+        lithk = glob.glob(os.path.join(submission.modelpath, 'ISMIP7',
+                                       'SYNTH1', 'CORE', 'C007',
+                                       'lithk_*.nc'))[0]
+        with nc.Dataset(lithk, 'a') as ds:
+            ds.delncattr('crs')
+            ds.delncattr('contact_email')
+        assert run_scalars(submission, tmp_path) == 0
+        out = capsys.readouterr().out
+        assert 'missing global attributes' in out
+        assert "'crs'" in out and "'contact_email'" in out
+        with self._ds(tmp_path, 'lim') as ds:
+            assert 'crs' not in ds.ncattrs()
+            assert 'group' in ds.ncattrs()
+
+    def _edit_exp_input(self, submission, tmp_path, pattern, email):
+        """Set ``contact_email`` on one exp input file of a writable copy."""
+        submission = _copied_submission(submission, tmp_path)
+        path = glob.glob(os.path.join(submission.modelpath, 'ISMIP7',
+                                      'SYNTH1', 'CORE', 'C007',
+                                      pattern))[0]
+        with nc.Dataset(path, 'a') as ds:
+            ds.contact_email = email
+        return submission
+
+    def test_fl_attrs_come_from_their_own_flux_file(self, submission,
+                                                    tmp_path):
+        """Each flux scalar inherits the required global attrs from the
+        flux input file it integrates, not from lithk."""
+        submission = self._edit_exp_input(submission, tmp_path, 'acabf_*.nc',
+                                          'flux-file@example.org')
+        assert run_scalars(submission, tmp_path) == 0
+        with self._ds(tmp_path, 'tendacabf') as ds:
+            assert ds.contact_email == 'flux-file@example.org'
+        with self._ds(tmp_path, 'slvaf') as ds:
+            assert ds.contact_email == 'synthetic@example.org'
+
+    def test_area_attrs_come_from_the_mask_file(self, submission, tmp_path):
+        """iareagr/iareafl are computed from sftgrf/sftflf and inherit that
+        file's required global attrs; lim stays lithk-sourced."""
+        submission = self._edit_exp_input(submission, tmp_path,
+                                          'sftgrf_*.nc',
+                                          'mask-file@example.org')
+        assert run_scalars(submission, tmp_path) == 0
+        with self._ds(tmp_path, 'iareagr') as ds:
+            assert ds.contact_email == 'mask-file@example.org'
+        with self._ds(tmp_path, 'lim') as ds:
+            assert ds.contact_email == 'synthetic@example.org'
+
+
+def _rewrite_fl_bounds(path, mode):
+    """Rebuild an FL input file with its time bounds mutated.
+
+    netCDF4 cannot delete a variable in place, so the file is copied with
+    ``time_bounds`` removed (``mode='remove'``), stored as (nv, time)
+    (``mode='transpose'``), stored as (bnds, time) (``mode='transpose_bnds'``),
+    or with one cell masked out (``mode='mask'``).
+    """
+    with nc.Dataset(path) as src, \
+            nc.Dataset(path + '.tmp', 'w', format='NETCDF4') as dst:
+        dst.setncatts({a: src.getncattr(a) for a in src.ncattrs()})
+        for name, dim in src.dimensions.items():
+            dst.createDimension(name, None if dim.isunlimited() else len(dim))
+        if mode == 'transpose_bnds':
+            dst.createDimension('bnds', 2)
+        for name, var in src.variables.items():
+            if name == 'time_bounds' and mode == 'remove':
+                continue
+            dims, data = var.dimensions, var[:]
+            if name == 'time_bounds' and mode in ('transpose',
+                                                  'transpose_bnds'):
+                bnds = 'bnds' if mode == 'transpose_bnds' else 'nv'
+                dims, data = (bnds, 'time'), data.T
+            if name == 'time_bounds' and mode == 'mask':
+                data = np.ma.masked_array(
+                    data, mask=(np.arange(data.size) == 0)
+                    .reshape(data.shape))
+            new = dst.createVariable(name, var.dtype, dims)
+            attrs = {a: var.getncattr(a) for a in var.ncattrs()}
+            if name == 'time' and mode == 'remove':
+                attrs.pop('bounds', None)
+            new.setncatts(attrs)
+            new[:] = data
+    os.replace(path + '.tmp', path)
+
+
+def _fl_input(submission, configid):
+    matches = glob.glob(os.path.join(submission.modelpath, 'ISMIP7',
+                                     'SYNTH1', 'CORE', configid,
+                                     'acabf_*.nc'))
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _copied_submission(submission, tmp_path):
+    """A writable copy of the session fixture's model tree.
+
+    The fixture is session-scoped because nothing in the suite modifies it --
+    so tests that need a mutated input file work on their own copy instead of
+    poisoning every later test.
+    """
+    dest = os.path.join(str(tmp_path), 'Models', 'AIS')
+    shutil.copytree(submission.modelpath, dest)
+    return SimpleNamespace(**{**vars(submission), 'modelpath': dest})
+
+
+class TestFlTimeBounds:
+    """FL outputs inherit the input files' time bounds verbatim."""
+
+    def _tb(self, outpath, varname='tendacabf'):
+        matches = glob.glob(os.path.join(nc_dir(outpath), f'{varname}_*.nc'))
+        assert len(matches) == 1
+        with nc.Dataset(matches[0]) as ds:
+            assert ds.variables['time'].bounds == 'time_bounds'
+            assert ds.variables['time_bounds'].dimensions == ('time', 'nv')
+            return np.array(ds.variables['time_bounds'][:])
+
+    def test_bounds_are_inherited_from_the_input(self, default_run):
+        # The fixture's bounds are deliberately non-canonical (mid-month to
+        # mid-month), so matching them proves inheritance, not coincidence.
+        expected = synthetic.fl_bounds(range(2010, 2021))
+        np.testing.assert_allclose(self._tb(default_run), expected)
+
+    def test_st_outputs_carry_no_bounds(self, default_run):
+        matches = glob.glob(os.path.join(nc_dir(default_run), 'lim_*.nc'))
+        assert len(matches) == 1
+        with nc.Dataset(matches[0]) as ds:
+            assert 'time_bounds' not in ds.variables
+
+    def test_transposed_input_layout_is_handled(self, submission, tmp_path):
+        submission = _copied_submission(submission, tmp_path)
+        path = _fl_input(submission, 'C007')
+        _rewrite_fl_bounds(path, 'transpose')
+        assert run_scalars(submission, tmp_path) == 0
+        # The output axis is hist + exp; both carry the same bounds here.
+        np.testing.assert_allclose(self._tb(tmp_path),
+                                   synthetic.fl_bounds(range(2010, 2021)))
+
+    def test_transposed_layout_with_other_dim_names_is_handled(
+            self, submission, tmp_path):
+        """Orientation comes from the dimension names, not a fixed 'nv'."""
+        submission = _copied_submission(submission, tmp_path)
+        path = _fl_input(submission, 'C007')
+        _rewrite_fl_bounds(path, 'transpose_bnds')
+        assert run_scalars(submission, tmp_path) == 0
+        np.testing.assert_allclose(self._tb(tmp_path),
+                                   synthetic.fl_bounds(range(2010, 2021)))
+
+    def test_masked_bounds_omit_bounds_from_the_output(
+            self, submission, tmp_path, capsys):
+        """Bounds with missing cells are not written half-broken; the output
+        gets no bounds at all."""
+        submission = _copied_submission(submission, tmp_path)
+        _rewrite_fl_bounds(_fl_input(submission, 'C007'), 'mask')
+        assert run_scalars(submission, tmp_path) == 0
+        out = capsys.readouterr().out
+        assert 'missing values' in out
+        with nc.Dataset(glob.glob(os.path.join(
+                nc_dir(tmp_path), 'tendacabf_*.nc'))[0]) as ds:
+            assert 'time_bounds' not in ds.variables
+            assert 'bounds' not in ds.variables['time'].ncattrs()
+
+    def test_hist_bounds_converted_when_time_units_differ(
+            self, submission, tmp_path):
+        """Hist bounds must land on the exp axis, like the timestamps do."""
+        submission = _copied_submission(submission, tmp_path)
+        path = _fl_input(submission, 'C001')
+        shift = 150 * 365  # days since 1850-01-01 -> days since 2000-01-01
+        with nc.Dataset(path, 'a') as ds:
+            t = np.array(ds.variables['time'][:])
+            tb = np.array(ds.variables['time_bounds'][:])
+            ds.variables['time'].units = 'days since 2000-01-01'
+            ds.variables['time'][:] = t - shift
+            ds.variables['time_bounds'].units = 'days since 2000-01-01'
+            ds.variables['time_bounds'][:] = tb - shift
+        assert run_scalars(submission, tmp_path) == 0
+        # The hist rows come back on the exp axis (their original encoding);
+        # the exp rows were never touched by the shift.
+        out_tb = self._tb(tmp_path)
+        np.testing.assert_allclose(out_tb[:len(tb)], tb)
+        np.testing.assert_allclose(out_tb[len(tb):],
+                                   synthetic.fl_bounds(range(2015, 2021)))
+
+    def test_missing_hist_bounds_omit_bounds_from_the_output(
+            self, submission, tmp_path, capsys):
+        """Bounds are written only when every contributing file has them."""
+        submission = _copied_submission(submission, tmp_path)
+        _rewrite_fl_bounds(_fl_input(submission, 'C001'), 'remove')
+        assert run_scalars(submission, tmp_path) == 0
+        assert 'C001' in capsys.readouterr().out
+        with nc.Dataset(glob.glob(os.path.join(
+                nc_dir(tmp_path), 'tendacabf_*.nc'))[0]) as ds:
+            assert 'time_bounds' not in ds.variables
+            assert 'bounds' not in ds.variables['time'].ncattrs()
+
+    def test_missing_exp_bounds_warn_and_omit(self, submission, tmp_path,
+                                              capsys):
+        submission = _copied_submission(submission, tmp_path)
+        _rewrite_fl_bounds(_fl_input(submission, 'C007'), 'remove')
+        assert run_scalars(submission, tmp_path) == 0
+        out = capsys.readouterr().out
+        assert 'no time bounds' in out
+        assert 'C007' in out
+        with nc.Dataset(glob.glob(os.path.join(
+                nc_dir(tmp_path), 'tendacabf_*.nc'))[0]) as ds:
+            assert 'time_bounds' not in ds.variables
+            assert 'bounds' not in ds.variables['time'].ncattrs()
+
 
 class TestCsvOutput:
     def _read(self, outpath):
@@ -519,7 +759,9 @@ class TestRefyear:
         assert run_scalars(submission, b, '--refyear', '2014') == 0
         va, _ = read_series(a, 'slvaf')
         vb, _ = read_series(b, 'slvaf')
-        np.testing.assert_allclose(np.diff(va), np.diff(vb), rtol=1e-10)
+        # f4 storage quantises the series, so the differences agree only to
+        # single precision.
+        np.testing.assert_allclose(np.diff(va), np.diff(vb), rtol=1e-6)
 
 
 class TestBasins:
@@ -532,16 +774,16 @@ class TestBasins:
             for i in range(1, 19):
                 part, _ = read_series(tmp_path, varname, mask=f'r{i:02d}')
                 total += part
-            np.testing.assert_allclose(total, whole, rtol=1e-10,
-                                       atol=1e-15 * np.max(np.abs(whole) + 1))
+            np.testing.assert_allclose(total, whole, rtol=1e-6,
+                                       atol=1e-6 * np.max(np.abs(whole)))
 
     def test_imbie_regions_sum_to_the_whole_sheet(self, submission, tmp_path):
         assert run_scalars(submission, tmp_path, '--basins') == 0
         whole, _ = read_series(tmp_path, 'slvaf', mask='ais')
         total = sum(read_series(tmp_path, 'slvaf', mask=name)[0]
                     for name in ('wais', 'eais', 'pina'))
-        np.testing.assert_allclose(total, whole, rtol=1e-10,
-                                   atol=1e-15 * np.max(np.abs(whole) + 1))
+        np.testing.assert_allclose(total, whole, rtol=1e-6,
+                                   atol=1e-6 * np.max(np.abs(whole)))
 
     def test_basin_mode_names_the_whole_sheet_mask(self, submission,
                                                    tmp_path):

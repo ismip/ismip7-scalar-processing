@@ -126,13 +126,34 @@ ones it skipped at the end. Flux files have their own time axis (Jul 1 of each
 year rather than Jan 1 of the next), so their year range can differ from the
 other files of the same run.
 
+The flux files also carry the time bounds of their inputs: a `time_bounds`
+variable on a `(time, nv)` dimension, with the `time` coordinate pointing to
+it through its `bounds` attribute. The bounds are inherited verbatim from the
+input files — the projection file's bounds, followed by the historical file's
+when one is prepended, re-expressed in the projection time units if the two
+do not share an encoding. They are written only when every contributing file
+has bounds; if one is missing or malformed, the run prints a warning and the
+output has none, which the compliance checker will reject until the
+submission is fixed. The state and sea-level files have no bounds, since
+their inputs carry none.
+
 ## Attributes
 
-Every NetCDF file holds a time coordinate and one variable, both double
-precision, on an unlimited time dimension. The time coordinate copies its
-units, calendar and long name from the model file. The state and flux scalars
-carry the long name, units and standard name given in the ISMIP7 data request,
-read from the isschecker package (see {doc}`data-sources`); the data request
-gives no standard name for tendlifmassbf and tendligroundf, so those two carry
-none. The sea-level scalars are this package's own and have no standard name
-either.
+Every NetCDF file holds a time coordinate and one variable, both single
+precision (f4) with the netCDF default fill value recorded as `_FillValue`,
+on an unlimited time dimension. The time coordinate copies its units,
+calendar and long name from the model file. The state and flux scalars
+carry the long name, units and standard name given in the ISMIP7 data
+request, read from the isschecker package (see {doc}`data-sources`); the
+data request gives no standard name for tendlifmassbf and tendligroundf, so
+those two carry none. The sea-level scalars are this package's own and have
+no standard name either.
+
+The global attributes `group`, `model`, `contact_name`, `contact_email` and
+`crs` — which the compliance checker requires on every file — are inherited
+from the model file each scalar is computed from: the state and sea-level
+scalars from `lithk`, the grounded/floating ice areas from `sftgrf`, and
+each flux scalar from its own flux input. A compliant submission carries
+the attributes on all of its files, so the values agree; if an input file
+lacks one, the run prints a warning and writes what it found, and the
+checker will reject the file until the submission is fixed.
