@@ -38,6 +38,7 @@ from ismip7_scalars.naming import (
 from ismip7_scalars.slc import slc_A2020, slc_G2020, slc_vaf
 from ismip7_scalars.variables import variable_metadata
 from ismip7_scalars.writers import (
+    REQUIRED_GLOBAL_ATTRS,
     TimeAxis,
     warn_years_out_of_range,
     write_scalar_nc,
@@ -198,6 +199,8 @@ class Geometry:
     st_ok: bool = False
     time_out: np.ndarray = field(default_factory=lambda: np.array([]))
     nominal_yrs: list = field(default_factory=list)
+    global_attrs: dict = field(default_factory=dict)
+    mask_attrs: dict = field(default_factory=dict)
 
     @property
     def nt(self):
@@ -457,6 +460,64 @@ def _hist_times_on_exp_axis(time_hist, hist_units, hist_calendar,
     return np.asarray(nc.date2num(dates, exp_units, calendar=exp_calendar))
 
 
+def _time_bounds(ds, tv, path):
+    """The time bounds a file carries for its ``time`` variable, as (n, 2).
+
+    The bounds variable's name comes from the ``bounds`` attribute rather than
+    being assumed, the orientation is detected from the dimension names --
+    (time, nv) or (nv, time) -- and an array with missing (masked) cells
+    counts as no bounds at all.  A missing or malformed bounds array is a
+    warning, not an error: the output is then written without bounds, which
+    the compliance checker will flag on its own.
+    """
+    if 'bounds' not in tv.ncattrs():
+        print(f'Warning: no time bounds in {path}; output will lack them')
+        return None
+    name = tv.bounds
+    if name not in ds.variables:
+        print(f'Warning: time bounds variable {name} not in {path}; '
+              'output will lack bounds')
+        return None
+    tb = ds.variables[name]
+    values = tb[:]
+    if np.ma.is_masked(values):
+        print(f'Warning: time bounds in {path} have missing values; '
+              'output will lack bounds')
+        return None
+    values = np.asarray(values, dtype=float)
+    time_dim = tv.dimensions[0]
+    dims = tb.dimensions
+    if (len(dims) == 2 and dims[0] == time_dim
+            and values.shape == (tv.shape[0], 2)):
+        pass
+    elif (len(dims) == 2 and dims[1] == time_dim
+            and values.shape == (2, tv.shape[0])):
+        values = values.T
+    else:
+        print(f'Warning: time bounds in {path} have shape {values.shape}, '
+              f'expected ({tv.shape[0]}, 2); output will lack bounds')
+        return None
+    return values
+
+
+def _global_attrs(ds, path):
+    """The checker-required global attributes one input file carries.
+
+    The checker requires ``group``, ``model``, ``contact_name``,
+    ``contact_email`` and ``crs`` on every output file, and each output
+    inherits them from the model file its scalar is computed from.  A
+    missing one is warned about and simply not written.
+    """
+    attrs = {a: ds.getncattr(a) for a in REQUIRED_GLOBAL_ATTRS
+             if a in ds.ncattrs()}
+    missing = [a for a in REQUIRED_GLOBAL_ATTRS if a not in attrs]
+    if missing:
+        print(f'WARNING: input file {os.path.basename(path)} is missing '
+              f'global attributes {missing}; the output files will not '
+              'carry them')
+    return attrs
+
+
 def resolve_hist_n_out(histout, n_hist, exp_is_hist):
     """How many historical timesteps to prepend to the output.
 
@@ -497,6 +558,9 @@ def load_geometry(settings):
         time_units = tv.units
         time_long_name = tv.long_name
         time_calendar = tv.calendar
+        # The checker requires these on every output file; the lithk-based
+        # scalars (SLC, lim, limnsw) inherit them from this file.
+        global_attrs = _global_attrs(ds, lithk_file)
 
     topg = _load_field(settings, settings.exppath, 'topg', settings.exp,
                        settings.configid)
@@ -563,7 +627,8 @@ def load_geometry(settings):
         time_long_name=time_long_name, time_calendar=time_calendar,
         time_hist=time_hist, n_hist=n_hist, ref_idx=ref_idx,
         lithk_hist=lithk_hist, topg_hist=topg_hist,
-        hist_n_out=hist_n_out, hist_start=hist_start)
+        hist_n_out=hist_n_out, hist_start=hist_start,
+        global_attrs=global_attrs)
 
     if ref_in_exp:
         print(f'Warning: --refyear {settings.refyear} not found in hist '
@@ -596,6 +661,16 @@ def _load_st_masks(settings, geom, exp_is_hist):
     geom.sftflf = _load_field(settings, settings.exppath, 'sftflf',
                               settings.exp, settings.configid)
     geom.st_ok = geom.sftgrf is not None and geom.sftflf is not None
+    if geom.sftgrf is not None:
+        # iareagr/iareafl inherit the checker's required global attrs from
+        # the mask file they are computed from.
+        sftgrf_file = find_model_file(
+            settings.exppath, 'sftgrf', settings.region, settings.group,
+            settings.model, settings.modelid, settings.esm,
+            settings.forcingid, settings.exp, settings.configid,
+            required=False)
+        with nc.Dataset(sftgrf_file, 'r') as ds:
+            geom.mask_attrs = _global_attrs(ds, sftgrf_file)
     if not geom.st_ok:
         print('WARNING: sftgrf/sftflf missing -- skipping ST scalars '
               '(lim, limnsw, iareagr, iareafl)')
@@ -798,7 +873,8 @@ def write_slc_outputs(settings, geom, regionName_raw, regionName, gic_suffix,
                              file_stem, settings.flg_bm)
         if write_nc:
             write_scalar_nc(os.path.join(settings.ncpath, f'{stem}.nc'),
-                            varname, values, time_axis, long_name, 'm')
+                            varname, values, time_axis, long_name, 'm',
+                            global_attrs=geom.global_attrs)
         if write_csv:
             csv_rows.append((
                 _slc_meta(settings, regionName, f'{varname}{gic_suffix}'),
@@ -885,10 +961,16 @@ def run(settings):
                 stem = make_out_stem(varname, '', regionName_raw, regionName,
                                      file_stem, settings.flg_bm)
                 if _output_enabled(settings.netcdf_enabled, FLG_ST_NC):
+                    # iareagr/iareafl are sftgrf-based, the rest lithk-based;
+                    # each output inherits its attrs from the file it comes
+                    # from.
+                    attrs = (geom.mask_attrs if varname in
+                             ('iareagr', 'iareafl') else geom.global_attrs)
                     write_scalar_nc(
                         os.path.join(settings.ncpath, f'{stem}.nc'), varname,
                         values[varname], time_axis, long_name, units,
-                        standard_name=standard_name)
+                        standard_name=standard_name,
+                        global_attrs=attrs)
 
     # ---- FL scalars, no GIC masking ----
     if netcdf_on:
@@ -932,8 +1014,10 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
             fl_time_units = tv.units
             fl_time_calendar = tv.calendar
             fl_time_long_name = tv.long_name
+            fl_bounds_exp = _time_bounds(ds, tv, fl_exp_file)
+            fl_attrs = _global_attrs(ds, fl_exp_file)
 
-        fl_hist, fl_time_hist = None, None
+        fl_hist, fl_time_hist, fl_bounds_hist = None, None, None
         if geom.hist_n_out > 0 and not exp_is_hist:
             fl_hist_file = find_model_file(
                 settings.histpath, input_var, settings.region, settings.group,
@@ -950,6 +1034,11 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
                     fl_time_hist = _hist_times_on_exp_axis(
                         htv[:], htv.units, htv.calendar, fl_time_units,
                         fl_time_calendar)
+                    fl_bounds_hist = _time_bounds(ds, htv, fl_hist_file)
+                    if fl_bounds_hist is not None:
+                        fl_bounds_hist = _hist_times_on_exp_axis(
+                            fl_bounds_hist, htv.units, htv.calendar,
+                            fl_time_units, fl_time_calendar)
 
         n_fl_hist = len(fl_time_hist) if fl_time_hist is not None else 0
         if fl_hist is not None and geom.hist_n_out > 0:
@@ -962,9 +1051,15 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
             fl_hist_start = n_fl_hist - fl_n_out
             fl_time_out = np.concatenate(
                 [fl_time_hist[fl_hist_start:], fl_time_exp])
+            if fl_bounds_exp is not None and fl_bounds_hist is not None:
+                fl_bounds = np.concatenate(
+                    [fl_bounds_hist[fl_hist_start:], fl_bounds_exp])
+            else:
+                fl_bounds = None
         else:
             fl_hist_start = n_fl_hist
             fl_time_out = np.asarray(fl_time_exp)
+            fl_bounds = fl_bounds_exp
 
         # FL timestamps sit at Jul 1 of year N, so the nominal year is the
         # timestamp year -- no offset, unlike ST.
@@ -975,7 +1070,7 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
             settings.esm, settings.forcingid, settings.exp, settings.configid,
             fl_dates[0].year, fl_dates[-1].year)
         fl_time_axis = TimeAxis(fl_time_out, fl_time_units, fl_time_long_name,
-                                fl_time_calendar)
+                                fl_time_calendar, bounds=fl_bounds)
 
         for regionName_raw, region_mask in regions.items():
             regionName = region_display_name(regionName_raw, settings.region)
@@ -994,7 +1089,8 @@ def run_fl_scalars(settings, geom, regions, af2, area_m2, exp_is_hist):
                 write_scalar_nc(os.path.join(settings.ncpath, f'{stem}.nc'),
                                 tendvarname, fl_integral, fl_time_axis,
                                 long_name, units,
-                                standard_name=standard_name)
+                                standard_name=standard_name,
+                                global_attrs=fl_attrs)
 
     return skipped
 
