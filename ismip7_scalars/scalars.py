@@ -201,6 +201,7 @@ class Geometry:
     nominal_yrs: list = field(default_factory=list)
     global_attrs: dict = field(default_factory=dict)
     mask_attrs: dict = field(default_factory=dict)
+    mask_attrs_fl: dict = field(default_factory=dict)
 
     @property
     def nt(self):
@@ -663,7 +664,7 @@ def _load_st_masks(settings, geom, exp_is_hist):
     geom.st_ok = geom.sftgrf is not None and geom.sftflf is not None
     if geom.sftgrf is not None:
         # iareagr/iareafl inherit the checker's required global attrs from
-        # the mask file they are computed from.
+        # the mask files they are computed from.
         sftgrf_file = find_model_file(
             settings.exppath, 'sftgrf', settings.region, settings.group,
             settings.model, settings.modelid, settings.esm,
@@ -671,6 +672,14 @@ def _load_st_masks(settings, geom, exp_is_hist):
             required=False)
         with nc.Dataset(sftgrf_file, 'r') as ds:
             geom.mask_attrs = _global_attrs(ds, sftgrf_file)
+    if geom.sftflf is not None:
+        sftflf_file = find_model_file(
+            settings.exppath, 'sftflf', settings.region, settings.group,
+            settings.model, settings.modelid, settings.esm,
+            settings.forcingid, settings.exp, settings.configid,
+            required=False)
+        with nc.Dataset(sftflf_file, 'r') as ds:
+            geom.mask_attrs_fl = _global_attrs(ds, sftflf_file)
     if not geom.st_ok:
         print('WARNING: sftgrf/sftflf missing -- skipping ST scalars '
               '(lim, limnsw, iareagr, iareafl)')
@@ -961,11 +970,14 @@ def run(settings):
                 stem = make_out_stem(varname, '', regionName_raw, regionName,
                                      file_stem, settings.flg_bm)
                 if _output_enabled(settings.netcdf_enabled, FLG_ST_NC):
-                    # iareagr/iareafl are sftgrf-based, the rest lithk-based;
-                    # each output inherits its attrs from the file it comes
-                    # from.
-                    attrs = (geom.mask_attrs if varname in
-                             ('iareagr', 'iareafl') else geom.global_attrs)
+                    # iareagr is sftgrf-based, iareafl sftflf-based, the
+                    # rest lithk-based; each output inherits its attrs from
+                    # the file it comes from.
+                    attrs = geom.global_attrs
+                    if varname == 'iareagr':
+                        attrs = geom.mask_attrs
+                    elif varname == 'iareafl':
+                        attrs = geom.mask_attrs_fl
                     write_scalar_nc(
                         os.path.join(settings.ncpath, f'{stem}.nc'), varname,
                         values[varname], time_axis, long_name, units,

@@ -396,14 +396,21 @@ class TestOutputMetadata:
             assert ds.contact_email == 'synthetic@example.org'
 
     def test_area_attrs_come_from_the_mask_file(self, submission, tmp_path):
-        """iareagr/iareafl are computed from sftgrf/sftflf and inherit that
-        file's required global attrs; lim stays lithk-sourced."""
-        submission = self._edit_exp_input(submission, tmp_path,
-                                          'sftgrf_*.nc',
-                                          'mask-file@example.org')
+        """iareagr inherits the sftgrf file's required global attrs and
+        iareafl the sftflf file's; lim stays lithk-sourced."""
+        submission = _copied_submission(submission, tmp_path)
+        for pattern, email in (('sftgrf_*.nc', 'grf-file@example.org'),
+                               ('sftflf_*.nc', 'flf-file@example.org')):
+            path = glob.glob(os.path.join(submission.modelpath, 'ISMIP7',
+                                          'SYNTH1', 'CORE', 'C007',
+                                          pattern))[0]
+            with nc.Dataset(path, 'a') as ds:
+                ds.contact_email = email
         assert run_scalars(submission, tmp_path) == 0
         with self._ds(tmp_path, 'iareagr') as ds:
-            assert ds.contact_email == 'mask-file@example.org'
+            assert ds.contact_email == 'grf-file@example.org'
+        with self._ds(tmp_path, 'iareafl') as ds:
+            assert ds.contact_email == 'flf-file@example.org'
         with self._ds(tmp_path, 'lim') as ds:
             assert ds.contact_email == 'synthetic@example.org'
 

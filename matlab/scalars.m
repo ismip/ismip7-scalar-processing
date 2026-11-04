@@ -266,7 +266,8 @@ c.AO    = oarea;
 sftgif = double(ncread(find_model_file(exppath, 'sftgif', region, group, model, modelid, esm, forcingid, exp, configid), 'sftgif'));
 sftgrf_file = find_model_file(exppath, 'sftgrf', region, group, model, modelid, esm, forcingid, exp, configid);
 sftgrf = double(ncread(sftgrf_file, 'sftgrf'));
-sftflf = double(ncread(find_model_file(exppath, 'sftflf', region, group, model, modelid, esm, forcingid, exp, configid), 'sftflf'));
+sftflf_file = find_model_file(exppath, 'sftflf', region, group, model, modelid, esm, forcingid, exp, configid);
+sftflf = double(ncread(sftflf_file, 'sftflf'));
 
 % Load hist mask fields needed for ST scalars (iareagr, iareafl)
 sftgrf_hist = sftgrf;
@@ -638,8 +639,10 @@ for ireg = 1:length(regionNames)
         ncwrite(scfile,  'time',   time_out(:));
         ncwrite(scfile,  varname,  data_out(:));
         ncwriteatt(scfile, '/',      'description', file_description);
-        if any(strcmp(varname, {'iareagr', 'iareafl'}))
+        if strcmp(varname, 'iareagr')
             write_req_global_attrs(scfile, sftgrf_file, req_global_attrs);
+        elseif strcmp(varname, 'iareafl')
+            write_req_global_attrs(scfile, sftflf_file, req_global_attrs);
         else
             write_req_global_attrs(scfile, lithk_tmp, req_global_attrs);
         end
@@ -807,9 +810,9 @@ for ifl = 1:size(fl_scalar_specs, 1)
         ncwrite(scfile,  'time',        fl_time_out_fl(:));
         ncwrite(scfile,  tendvarname,   fl_integral(:));
         if ~isempty(fl_bounds)
-            nccreate(scfile, 'time_bounds', 'Dimensions', {'time', Inf, 'nv', 2}, ...
+            nccreate(scfile, 'time_bounds', 'Dimensions', {'nv', 2, 'time', Inf}, ...
                      'Datatype', 'single', 'FillValue', nc_fill_f4);
-            ncwrite(scfile, 'time_bounds', fl_bounds);
+            ncwrite(scfile, 'time_bounds', fl_bounds.');
             ncwriteatt(scfile, 'time', 'bounds', 'time_bounds');
             ncwriteatt(scfile, 'time_bounds', 'units', fl_time_units);
         end
@@ -850,12 +853,21 @@ end
 function write_req_global_attrs(scfile, infile, req_attrs)
 % Copy the compliance checker's required global attributes from the input
 % file the scalar was computed from.  A missing attribute is warned about
-% and simply not written; the checker will flag its absence.
+% once per input file and attribute, then simply not written; the checker
+% will flag its absence.
+    persistent warned
+    if isempty(warned)
+        warned = containers.Map('KeyType', 'char', 'ValueType', 'logical');
+    end
     for ga = req_attrs
         try
             ncwriteatt(scfile, '/', ga{1}, ncreadatt(infile, '/', ga{1}));
         catch
-            fprintf('Warning: input file %s is missing global attribute %s\n', infile, ga{1});
+            key = sprintf('%s|%s', infile, ga{1});
+            if ~isKey(warned, key)
+                warned(key) = true;
+                fprintf('Warning: input file %s is missing global attribute %s\n', infile, ga{1});
+            end
         end
     end
 end

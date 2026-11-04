@@ -2,7 +2,9 @@
 """Compare MATLAB and Python scalar output files — all NC variables.
 
 Discovers all Python NC files, matches by filename against MATLAB output,
-and reports max absolute diff, RMS, and relative diff for each.
+and reports max absolute diff, RMS, and relative diff for each. Also checks
+each file's time bounds (presence, (time, nv) dimension order, values) and
+the five checker-required global attributes.
 
 Usage:
     python compare_outputs.py                           # both default to ../Output/nc
@@ -30,6 +32,52 @@ SLC_VARS = {'slvaf', 'slg20', 'sla20'}
 ABS_TOL  = 1e-6    # metres — applied to SLC variables; f4 output storage
                    # quantises values to ~6e-8 relative
 REL_TOL  = 1e-6    # applied to all other variables (relative to data max)
+REQUIRED_ATTRS = ('group', 'model', 'contact_name', 'contact_email', 'crs')
+
+
+def check_time_bounds(ds_py, ds_mat, rel_tol):
+    """Compare the time bounds of two scalar files.
+
+    Both files must either carry bounds or not, the bounds variable must
+    sit on a (time, nv) dimension — CF puts the vertex dimension last —
+    and the values must agree within rel_tol.
+    """
+    def bounds_var(ds):
+        tv = ds.variables.get('time')
+        if tv is None or not hasattr(tv, 'bounds'):
+            return None
+        return ds.variables.get(tv.bounds)
+
+    py_b, mat_b = bounds_var(ds_py), bounds_var(ds_mat)
+    if (py_b is None) != (mat_b is None):
+        print('  BOUNDS MISMATCH: Python and MATLAB disagree on whether '
+              'time_bounds exists')
+        return False
+    if py_b is None:
+        return True
+    for name, b in (('Python', py_b), ('MATLAB', mat_b)):
+        if tuple(b.dimensions) != ('time', 'nv'):
+            print(f'  BOUNDS DIMS ({name}): {b.dimensions} '
+                  '(CF requires (time, nv))')
+            return False
+    py_arr, mat_arr = np.array(py_b[:]), np.array(mat_b[:])
+    scale = float(np.max(np.abs(py_arr)))
+    rel = float(np.max(np.abs(py_arr - mat_arr))) / scale if scale else 0.0
+    if rel >= rel_tol:
+        print(f'  BOUNDS DIFF: rel {rel:.2e} exceeds tolerance')
+        return False
+    return True
+
+
+def check_global_attrs(ds_py, ds_mat):
+    """The five checker-required global attributes must agree."""
+    ok = True
+    for a in REQUIRED_ATTRS:
+        va, vb = getattr(ds_py, a, None), getattr(ds_mat, a, None)
+        if va != vb:
+            print(f'  ATTR MISMATCH {a}: Python {va!r} vs MATLAB {vb!r}')
+            ok = False
+    return ok
 
 py_dir  = args.py_outpath
 mat_dir = args.mat_outpath
@@ -88,8 +136,6 @@ for py_path in py_files:
 
     py_data  = np.array(ds_py.variables[nc_varname][:])
     mat_data = np.array(ds_mat.variables[nc_varname][:])
-    ds_py.close()
-    ds_mat.close()
 
     diff     = np.abs(py_data - mat_data)
     max_diff = float(diff.max())
@@ -98,9 +144,16 @@ for py_path in py_files:
     rel_diff = max_diff / scale if scale > 0 else 0.0
 
     if nc_varname in SLC_VARS:
-        ok = max_diff < ABS_TOL
+        var_ok = max_diff < ABS_TOL
     else:
-        ok = rel_diff < REL_TOL
+        var_ok = rel_diff < REL_TOL
+
+    bounds_ok = check_time_bounds(ds_py, ds_mat, REL_TOL)
+    attrs_ok  = check_global_attrs(ds_py, ds_mat)
+    ds_py.close()
+    ds_mat.close()
+
+    ok = var_ok and bounds_ok and attrs_ok
 
     status = 'OK' if ok else 'FAIL'
     if not ok:

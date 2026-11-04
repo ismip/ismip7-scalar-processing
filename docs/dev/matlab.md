@@ -72,21 +72,27 @@ python compare_outputs.py --region AIS \
 file against the MATLAB file at the same relative path, falling back to a
 recursive search by basename. It covers every output variable -- the three SLC
 methods, the four state scalars and the six flux scalars -- checking SLC against
-an absolute tolerance of 1 × 10⁻¹⁰ m and everything else against a relative
-tolerance of 1 × 10⁻¹⁰.
+an absolute tolerance of 1 × 10⁻⁶ m and everything else against a relative
+tolerance of 1 × 10⁻⁶, loose enough for the single precision (f4) the outputs
+are stored in. It also checks each file's `time_bounds` -- present in both or
+neither, on a `(time, nv)` dimension with the vertex dimension last as CF
+requires, and equal within tolerance -- and the five checker-required global
+attributes.
 
 The consolidated CSV is compared separately, by
 `manual-tests/mvsp/compare_csv.py`; `manual-tests/mvsp/` also holds the MATLAB
 drivers for the three mask combinations. See the README there.
 
-Observed differences are at machine epsilon for most variables, around 10⁻¹⁵
-relative. The two cumulative SLC methods, `slvaf` and `slg20`, are a little
-looser at about 3 × 10⁻¹² relative (a few 10⁻¹² m absolute) -- still far inside
-the 10⁻¹⁰ tolerance. Both are differences of two large volume sums, so the
-comparison is sensitive to the last bits of the input fields; the exact cause of
-the residual has not been traced. Most recently checked against
-`Submission_Tests_v1` AIS VUW/PISM1 and GrIS NORCE/CISM16x-MAR312-p50 on NIRD,
-and AIS NORCE/CISM ssp370 C003 for the CSV.
+The outputs are f4, so differences below f4 resolution (about 10⁻⁷ relative)
+round away. In the latest full check (branch `hgoelzer/pass-meta`, C001 and
+C003 on NIRD) every variable, the time bounds and the global attributes
+matched exactly, with no differences at all. Both implementations compute in
+double precision and round once at write time, so a genuine disagreement
+would still show up at f4 resolution. Earlier checks against
+`Submission_Tests_v1` AIS VUW/PISM1 and GrIS NORCE/CISM16x-MAR312-p50 saw
+only the cumulative SLC methods `slvaf` and `slg20` differ, by a few 10⁻¹² m
+-- differences of two large volume sums, sensitive to the last bits of the
+input fields; with f4 output those now round away too.
 
 This comparison cannot run in CI -- there is no MATLAB there, and no submission
 tree -- so it is a manual step. Run it when you change anything that touches
