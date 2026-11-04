@@ -63,6 +63,16 @@ def fl_time(nominal_years):
                     dtype=float)
 
 
+def fl_bounds(nominal_years):
+    """FL time bounds, deliberately not the canonical Jan 1 convention.
+
+    Mid-month to mid-month, so an output file that matches these values
+    proves they were inherited from the input rather than assumed.
+    """
+    starts = [_year_start_days(y) + 14 for y in nominal_years]
+    return np.column_stack([starts, [s + DAYS_PER_YEAR for s in starts]])
+
+
 def _add_grid(ds):
     """Give a dataset the x/y axes the resolution detection reads."""
     ds.createDimension('x', NX)
@@ -75,17 +85,27 @@ def _add_grid(ds):
     y[:] = np.arange(NY) * DX
 
 
-def _write_field(path, varname, data, time_values, units, long_name):
+def _write_field(path, varname, data, time_values, units, long_name,
+                 global_attrs=None, time_bounds=None):
     """Write one ``(time, y, x)`` variable to an ISMIP7-shaped file."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with nc.Dataset(path, 'w', format='NETCDF4') as ds:
         ds.createDimension('time', None)
+        for attr, value in (global_attrs or {}).items():
+            ds.setncattr(attr, value)
+        ds.description = 'Synthetic ISMIP7 model output'
         _add_grid(ds)
         tv = ds.createVariable('time', 'f8', ('time',))
         tv.units = TIME_UNITS
         tv.calendar = CALENDAR
         tv.long_name = 'time'
         tv[:] = time_values
+        if time_bounds is not None:
+            ds.createDimension('nv', 2)
+            tb = ds.createVariable('time_bounds', 'f8', ('time', 'nv'))
+            tb.units = TIME_UNITS
+            tb[:] = time_bounds
+            tv.bounds = 'time_bounds'
         var = ds.createVariable(varname, 'f8', ('time', 'y', 'x'))
         var.units = units
         var.long_name = long_name
@@ -223,17 +243,30 @@ def write_experiment(modelpath, region='AIS', group='ISMIP7', model='SYNTH1',
             f'_{experiment}_{configid}_'
             f'{nominal_years[0]}-{nominal_years[-1]}.nc')
 
+    # Global attributes a compliant submission carries on every file; the
+    # processing copies them onto the scalar outputs.
+    global_attrs = {
+        'group': group,
+        'model': model,
+        'contact_name': 'Synthetic Contact',
+        'contact_email': 'synthetic@example.org',
+        'crs': 'epsg:3413' if region == 'GrIS' else 'epsg:3031',
+    }
+
     for var in variables:
         data, units, long_name = fields[var]
         _write_field(os.path.join(exppath, f'{var}_{stem}'), var, data,
-                     st_time(nominal_years), units, long_name)
+                     st_time(nominal_years), units, long_name,
+                     global_attrs=global_attrs)
 
     for var in fluxes:
         magnitude = FLUX_VARS[var]
         data = np.full((nyears, NY, NX), magnitude)
         data[lithk <= 0.0] = 0.0
         _write_field(os.path.join(exppath, f'{var}_{stem}'), var, data,
-                     fl_time(nominal_years), 'kg m-2 s-1', var)
+                     fl_time(nominal_years), 'kg m-2 s-1', var,
+                     global_attrs=global_attrs,
+                     time_bounds=fl_bounds(nominal_years))
 
     return exppath
 

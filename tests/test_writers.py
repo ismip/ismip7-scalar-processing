@@ -48,6 +48,36 @@ class TestWriteScalarNc:
             np.testing.assert_allclose(ds.variables['time'][:],
                                        time_axis.values)
 
+    def test_variables_are_single_precision_with_default_fill(self, tmp_path,
+                                                              time_axis):
+        """The data request asks for f4, and the checker wants ``_FillValue``
+        to equal the default netCDF4 fill value for that dtype."""
+        path = str(tmp_path / 'x.nc')
+        write_scalar_nc(path, 'x', [1.0, 2.0], time_axis, 'x', 'm')
+        with nc.Dataset(path) as ds:
+            for name in ('time', 'x'):
+                assert ds.variables[name].dtype == np.float32
+                assert ds.variables[name]._FillValue == \
+                    nc.default_fillvals['f4']
+
+    def test_global_attrs_are_copied(self, tmp_path, time_axis):
+        path = str(tmp_path / 'x.nc')
+        attrs = {'group': 'GR', 'model': 'MOD', 'contact_name': 'A Person',
+                 'contact_email': 'a@b.c', 'crs': 'epsg:3031'}
+        write_scalar_nc(path, 'x', [1.0], time_axis, 'x', 'm',
+                        global_attrs=attrs)
+        with nc.Dataset(path) as ds:
+            for attr, value in attrs.items():
+                assert ds.getncattr(attr) == value
+            # Our own description survives alongside the copied attributes.
+            assert 'description' in ds.ncattrs()
+
+    def test_no_global_attrs_when_none_given(self, tmp_path, time_axis):
+        path = str(tmp_path / 'x.nc')
+        write_scalar_nc(path, 'x', [1.0], time_axis, 'x', 'm')
+        with nc.Dataset(path) as ds:
+            assert 'group' not in ds.ncattrs()
+
     def test_creates_missing_directories(self, tmp_path, time_axis):
         path = str(tmp_path / 'a' / 'b' / 'c' / 'x.nc')
         write_scalar_nc(path, 'x', [0.0, 0.0, 0.0], time_axis, 'x', 'm')
@@ -58,6 +88,30 @@ class TestWriteScalarNc:
         write_scalar_nc(path, 'x', [0.0, 0.0, 0.0], time_axis, 'x', 'm')
         with nc.Dataset(path) as ds:
             assert ds.dimensions['time'].isunlimited()
+
+    def test_time_bounds_written_when_given(self, tmp_path):
+        bounds = np.array([[0.0, 365.0], [365.0, 730.0]])
+        axis = TimeAxis(np.array([182.5, 547.5]), 'days since 1850-01-01',
+                        'time', 'noleap', bounds=bounds)
+        path = str(tmp_path / 'x.nc')
+        write_scalar_nc(path, 'x', [1.0, 2.0], axis, 'x', 'm')
+        with nc.Dataset(path) as ds:
+            assert ds.variables['time'].bounds == 'time_bounds'
+            assert ds.variables['time_bounds'].dimensions == ('time', 'nv')
+            assert ds.variables['time_bounds'].dtype == np.float32
+            assert ds.variables['time_bounds']._FillValue == \
+                nc.default_fillvals['f4']
+            assert ds.variables['time_bounds'].units == \
+                'days since 1850-01-01'
+            np.testing.assert_allclose(ds.variables['time_bounds'][:], bounds)
+
+    def test_no_time_bounds_when_not_given(self, tmp_path, time_axis):
+        path = str(tmp_path / 'x.nc')
+        write_scalar_nc(path, 'x', [1.0], time_axis, 'x', 'm')
+        with nc.Dataset(path) as ds:
+            assert 'nv' not in ds.dimensions
+            assert 'time_bounds' not in ds.variables
+            assert 'bounds' not in ds.variables['time'].ncattrs()
 
 
 class TestCsvRow:

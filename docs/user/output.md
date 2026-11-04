@@ -126,13 +126,28 @@ ones it skipped at the end. Flux files have their own time axis (Jul 1 of each
 year rather than Jan 1 of the next), so their year range can differ from the
 other files of the same run.
 
+The flux files also give the period each value covers, in a `time_bounds`
+variable copied from the model's flux file (and from the historical run's
+file, for the historical years). If either file has no time bounds, the run
+prints a warning and writes the scalar file without them, and the compliance
+checker will reject it. The state and sea-level files have no time bounds,
+because their model files have none.
+
 ## Attributes
 
-Every NetCDF file holds a time coordinate and one variable, both double
-precision, on an unlimited time dimension. The time coordinate copies its
-units, calendar and long name from the model file. The state and flux scalars
-carry the long name, units and standard name given in the ISMIP7 data request,
-read from the isschecker package (see {doc}`data-sources`); the data request
-gives no standard name for tendlifmassbf and tendligroundf, so those two carry
-none. The sea-level scalars are this package's own and have no standard name
-either.
+Every NetCDF file holds a time coordinate and one variable, both single
+precision (f4) with the netCDF default fill value recorded as `_FillValue`,
+on an unlimited time dimension. The time coordinate copies its units,
+calendar and long name from the model file. The state and flux scalars
+carry the long name, units and standard name given in the ISMIP7 data
+request, read from the isschecker package (see {doc}`data-sources`); the
+data request gives no standard name for tendlifmassbf and tendligroundf, so
+those two carry none. The sea-level scalars are this package's own and have
+no standard name either.
+
+Each file also copies five global attributes from the model file its scalar
+is computed from: `group`, `model`, `contact_name`, `contact_email` and
+`crs`. The state and sea-level scalars take them from lithk, the grounded and
+floating ice areas from sftgrf and sftflf, and each flux scalar from its flux
+file. The compliance checker requires all five. If a model file is missing
+one, the run prints a warning and the scalar file is missing it too.
