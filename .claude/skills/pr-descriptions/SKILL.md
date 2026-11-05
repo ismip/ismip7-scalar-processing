@@ -11,8 +11,9 @@ The reader is deciding whether to review.
 - Anything needing a reviewer decision goes in its own short list near the
   top, never mid-paragraph.
 - A list of changed behaviors is fine. A trace of the mechanism is not.
-- If a computed number changes, say which variable and roughly by how
-  much, and whether matlab/scalars.m changes with it.
+- If how a scalar is computed changes, say which scalars, the old and
+  new value of any constant or default the code defines, and whether
+  matlab/scalars.m changes with it.
 - No commit list. No testing; that goes in a separate `Testing` comment.
 - Link the issue that gives context, with a closing keyword if the pull
   request fixes it.

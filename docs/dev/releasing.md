@@ -11,9 +11,10 @@ conda-forge builds from a tag. Anything on `main` that has not been tagged
 therefore does not exist as far as they are concerned.
 
 **So release often: whenever a change reaches `main` that a user would
-notice.** That is deliberately a low bar: a change to any computed number, a
-new or altered command-line option, a change to the output filenames or CSV
-columns, a bug fix, or a widened dependency range. Releases are cheap; someone
+notice.** That is deliberately a low bar: a change to how a scalar is computed
+or to a value the code defines, a new or altered command-line option, a change
+to the output filenames or CSV columns, a bug fix, or a widened dependency
+range. Releases are cheap; someone
 chasing a discrepancy against a source checkout that turns out to be six months
 of untagged changes is not. Refactorings, tests, CI and documentation-only
 changes need no release, though there is no harm in folding them into the next
@@ -25,16 +26,20 @@ Versions follow [semantic versioning](https://semver.org/):
 
 - **patch** (0.1.0 → 0.1.1): a fix that changes no output.
 - **minor** (0.1.0 → 0.2.0): a new command, option or option value, a
-  corrected number, or a dependency range widened.
+  change to how a scalar is computed, or a dependency range widened.
 - **major** (0.1.0 → 1.0.0): a change to the output layout, the filenames or
   the CSV columns, or an option removed or renamed.
 
 While the version is 0.x, a change that would be major bumps the minor
 version instead, as semantic versioning allows.
 
-A change to a computed value is never a patch, and its release notes say which
-variable moved and by how much. People compare these numbers across
-submissions; a silent change to one of them is worse than no release at all.
+A change to how a scalar is computed is never a patch, and its release notes
+say which scalars it affects. If a value the code defines changed -- a
+constant such as the ocean area, a default such as a reference year, or the
+pairing in the CORE table -- they also give the old and new value. How far a
+given submission's numbers move depends on the submission, so the notes do
+not try to say. People compare these numbers across submissions; a silent
+change to them is worse than no release at all.
 
 A pull request with a change a user would notice should bump `version` in
 `pyproject.toml` itself, by the smallest step that covers it. If `main`

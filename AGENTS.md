@@ -2,13 +2,14 @@
 
 These instructions apply to the whole repository.
 
-## Changing a computed number
+## Changing what the scalars compute
 
 matlab/scalars.m is kept numerically identical to the Python package. A
-change to any computed value, or to what is written where, is made in both,
-and the pull request says so. docs/dev/matlab.md lists the places the two
-differ; a new difference goes on that list. CI cannot run MATLAB, so the
-comparison in manual-tests/mvsp is run by hand.
+change to how a scalar is computed, to a value the code defines (a
+constant, a default or the CORE table), or to what is written where, is
+made in both, and the pull request says so. docs/dev/matlab.md lists the
+places the two differ; a new difference goes on that list. CI cannot run
+MATLAB, so the comparison in manual-tests/mvsp is run by hand.
 
 ## GitHub pull requests and issues
 
