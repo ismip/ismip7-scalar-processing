@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ismip7-scalars"
-version = "0.1.0"
+version = "0.2.0"
 description = "Sea-level contributions and other scalar diagnostics from ISMIP7 ice sheet model output"
 readme = "README.md"
 license = "MIT"
