@@ -74,6 +74,15 @@ SLC_SPECS = (
     ('sla20', 'Sea level contribution based on A2020'),
 )
 
+#: The extra SLC variants ``--base-variants`` asks for.  Each takes the volume
+#: above flotation from the ice base rather than the bed, for the reason given
+#: at ``slc_vaf.get_vaf``.  A2020 has none: its grounded and ocean masks are
+#: what go wrong in a partly floating cell, and the ice base does not fix them.
+BASE_SLC_SPECS = (
+    ('slvafbase', 'Sea level contribution based on Vaf, from the ice base'),
+    ('slg20base', 'Sea level contribution based on G2020, from the ice base'),
+)
+
 #: ST (state) scalars this package writes.  Their standard_name, units and
 #: long_name come from the ISMIP7 data request via
 #: :func:`~ismip7_scalars.variables.variable_metadata`, not from here: each is
@@ -132,6 +141,7 @@ class Settings:
     histout: int = -1
     flg_mm: bool = True
     flg_bm: bool = False
+    base_variants: bool = False
     verbose: bool = False
     csv_enabled: bool | None = None
     netcdf_enabled: bool | None = None
@@ -178,10 +188,8 @@ class Geometry:
 
     lithk: np.ndarray
     topg: np.ndarray
-    base: np.ndarray
     lithk_ref: np.ndarray
     topg_ref: np.ndarray
-    base_ref: np.ndarray
     time_model: np.ndarray
     time_units: str
     time_long_name: str
@@ -192,6 +200,8 @@ class Geometry:
     ref_idx_exp: int | None = None
     lithk_hist: np.ndarray | None = None
     topg_hist: np.ndarray | None = None
+    base: np.ndarray | None = None
+    base_ref: np.ndarray | None = None
     base_hist: np.ndarray | None = None
     hist_n_out: int = 0
     hist_start: int = 0
@@ -289,6 +299,10 @@ def build_parser():
     parser.add_argument('--no-mm', action='store_true',
                         help='Skip the whole-ice-sheet (mm) integral; '
                              'requires --basins')
+    parser.add_argument('--base-variants', action='store_true',
+                        help='Also write slvafbase and slg20base, which take '
+                             'the volume above flotation from base, the ice '
+                             'base, instead of topg')
     parser.add_argument('--verbose', action='store_true',
                         help='Print field shapes and integrals as they are '
                              'computed')
@@ -345,6 +359,7 @@ def settings_from_args(args, cwd=None):
         histout=args.histout,
         flg_mm=not args.no_mm,
         flg_bm=args.basins,
+        base_variants=args.base_variants,
         verbose=args.verbose,
         csv_enabled=args.csv,
         netcdf_enabled=args.netcdf,
@@ -541,7 +556,9 @@ def resolve_hist_n_out(histout, n_hist, exp_is_hist):
 
 
 def load_geometry(settings):
-    """Load ``lithk``, ``topg`` and ``base`` for the projection and hist runs.
+    """Load ``lithk`` and ``topg`` for the projection and historical runs.
+
+    ``base`` is loaded too when ``--base-variants`` asks for it.
 
     Also resolves the reference state the SLC methods measure against, the
     historical timesteps to prepend, and the shared output time axis.
@@ -615,8 +632,9 @@ def load_geometry(settings):
         raise MissingInput(f'missing topg for hist in {settings.histpath}')
     topg_ref, topg_hist = hist_topg
 
-    base, base_ref, base_hist = _load_base(
-        settings, topg, topg_ref, topg_hist, ref_idx, need_hist_arrays)
+    base, base_ref, base_hist = (
+        _load_base(settings, ref_idx, need_hist_arrays)
+        if settings.base_variants else (None, None, None))
 
     if exp_is_hist and FLG_A20_CUMUL:
         # Same file: reuse the arrays already in memory.
@@ -625,8 +643,8 @@ def load_geometry(settings):
         base_hist = base
 
     geom = Geometry(
-        lithk=lithk, topg=topg, base=base, lithk_ref=lithk_ref,
-        topg_ref=topg_ref, base_ref=base_ref,
+        lithk=lithk, topg=topg, lithk_ref=lithk_ref, topg_ref=topg_ref,
+        base=base, base_ref=base_ref,
         time_model=time_model, time_units=time_units,
         time_long_name=time_long_name, time_calendar=time_calendar,
         time_hist=time_hist, n_hist=n_hist, ref_idx=ref_idx,
@@ -648,7 +666,8 @@ def load_geometry(settings):
         geom.ref_idx_exp = int(idx[-1])
         geom.lithk_ref = lithk[geom.ref_idx_exp, :, :]
         geom.topg_ref = topg[geom.ref_idx_exp, :, :]
-        geom.base_ref = geom.base[geom.ref_idx_exp, :, :]
+        if base is not None:
+            geom.base_ref = base[geom.ref_idx_exp, :, :]
 
     _load_st_masks(settings, geom, exp_is_hist)
     _build_time_axis(geom)
@@ -673,13 +692,11 @@ def _load_hist_field(settings, var, ref_idx, need_all):
     return at_ref, whole
 
 
-def _load_base(settings, topg, topg_ref, topg_hist, ref_idx, need_all):
-    """Load ``base``, which the volume above flotation is computed from.
+def _load_base(settings, ref_idx, need_all):
+    """Load ``base`` for the base variants of the SLC.
 
-    Returns ``(base, base_ref, base_hist)``.  A submission missing it, from
-    either run, falls back to ``topg`` for both, so that the reference and the
-    projection are measured the same way.  See ``slc_vaf.get_vaf`` for why the
-    ice base is the better choice.
+    Returns ``(base, base_ref, base_hist)``, or three ``None`` when either run
+    is missing it, in which case the base variants are skipped.
     """
     base = _load_field(settings, settings.exppath, 'base', settings.exp,
                        settings.configid)
@@ -689,10 +706,9 @@ def _load_base(settings, topg, topg_ref, topg_hist, ref_idx, need_all):
 
     missing = [name for name, field in (('exp', base), ('hist', hist_base))
                if field is None]
-    print(f'WARNING: base missing for {" and ".join(missing)} -- computing '
-          f'volume above flotation (slvaf, slg20, limnsw) from topg, which '
-          f'undercounts it in cells the grounding line or ice front crosses')
-    return topg, topg_ref, topg_hist
+    print(f'WARNING: base missing for {" and ".join(missing)} -- skipping '
+          f'{", ".join(name for name, _ in BASE_SLC_SPECS)}')
+    return None, None, None
 
 
 def _load_st_masks(settings, geom, exp_is_hist):
@@ -772,17 +788,16 @@ def _build_time_axis(geom):
 
 def compute_slc_series(geom, c, region_mask, af2, maxmask1, gic_mask, area_m2,
                        exp_is_hist):
-    """The three SLC time series for one mask and one GIC mode.
+    """The SLC time series for one mask and one GIC mode.
 
     Returns ``(slvaf, slg20, sla20)``, each covering the prepended historical
-    timesteps followed by the projection.  Volume above flotation is computed
-    from the ice base ``Z``, for the reason given at ``slc_vaf.get_vaf``.
-    A2020 still takes the bed: its grounded and ocean masks are what go wrong
-    in a partly floating cell, and the ice base does not fix them.
+    timesteps followed by the projection, and then ``(slvafbase, slg20base)``
+    if ``geom`` has the ice base.
     """
     H0 = geom.lithk_ref * maxmask1 * gic_mask
     B0 = geom.topg_ref
     Z0 = geom.base_ref
+    with_base = Z0 is not None
     # TODO clarify if S0=0 is correct for all models
     S0 = geom.topg_ref * 0.0  # sea level fixed to 0
 
@@ -790,16 +805,21 @@ def compute_slc_series(geom, c, region_mask, af2, maxmask1, gic_mask, area_m2,
 
     vaf_hist, g20_hist, a20_hist = [], [], []
     vaf_list, g20_list, a20_list = [], [], []
+    vafb_hist, g20b_hist, vafb_list, g20b_list = [], [], [], []
 
     # ---- historical portion (VAF, G2020, and non-cumulative A2020) ----
     if geom.hist_n_out > 0:
         for n in range(geom.hist_start, geom.n_hist):
             H = geom.lithk_hist[n, :, :] * maxmask1 * gic_mask
             B = geom.topg_hist[n, :, :]
-            Z = geom.base_hist[n, :, :]
-            vaf_hist.append(slc_vaf.get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c))
-            g20_hist.append(slc_G2020.get_slc_G2020(
-                H0, H, B0, B, A, c, base0=Z0, base=Z))
+            vaf_hist.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
+            g20_hist.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
+            if with_base:
+                Z = geom.base_hist[n, :, :]
+                vafb_hist.append(
+                    slc_vaf.get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c))
+                g20b_hist.append(slc_G2020.get_slc_G2020(
+                    H0, H, B0, B, A, c, base0=Z0, base=Z))
             if not FLG_A20_CUMUL:
                 a20_hist.append(
                     slc_A2020.get_slc_A2020(H0, H, B0, B, S0, S0, A, c))
@@ -808,10 +828,13 @@ def compute_slc_series(geom, c, region_mask, af2, maxmask1, gic_mask, area_m2,
     for n in range(geom.nt):
         H = geom.lithk[n, :, :] * maxmask1 * gic_mask
         B = geom.topg[n, :, :]
-        Z = geom.base[n, :, :]
-        vaf_list.append(slc_vaf.get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c))
-        g20_list.append(slc_G2020.get_slc_G2020(
-            H0, H, B0, B, A, c, base0=Z0, base=Z))
+        vaf_list.append(slc_vaf.get_slc_vaf(H0, H, B0, B, S0, S0, A, c))
+        g20_list.append(slc_G2020.get_slc_G2020(H0, H, B0, B, A, c))
+        if with_base:
+            Z = geom.base[n, :, :]
+            vafb_list.append(slc_vaf.get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c))
+            g20b_list.append(slc_G2020.get_slc_G2020(
+                H0, H, B0, B, A, c, base0=Z0, base=Z))
 
     # ---- A2020, method-dependent ----
     if not FLG_A20_CUMUL:
@@ -824,9 +847,13 @@ def compute_slc_series(geom, c, region_mask, af2, maxmask1, gic_mask, area_m2,
         a20_hist, a20_list = _cumulative_a2020(
             geom, c, maxmask1, gic_mask, A, S0, exp_is_hist)
 
-    return (np.concatenate([vaf_hist, vaf_list]),
-            np.concatenate([g20_hist, g20_list]),
-            np.concatenate([a20_hist, a20_list]))
+    series = (np.concatenate([vaf_hist, vaf_list]),
+              np.concatenate([g20_hist, g20_list]),
+              np.concatenate([a20_hist, a20_list]))
+    if with_base:
+        series += (np.concatenate([vafb_hist, vafb_list]),
+                   np.concatenate([g20b_hist, g20b_list]))
+    return series
 
 
 def _cumulative_a2020(geom, c, maxmask1, gic_mask, A, S0, exp_is_hist):
@@ -881,12 +908,11 @@ def compute_st_series(geom, c, region_mask, af2, maxmask1, area_m2):
 
     values = {name: [] for name in ST_SCALAR_NAMES}
 
-    def accumulate(lithk, base, sftgrf, sftflf, indices):
+    def accumulate(lithk, topg, sftgrf, sftflf, indices):
         for n in indices:
             H = lithk[n, :, :] * maxmask1
-            # The ice base, not the bed, as for slvaf (see slc_vaf.get_vaf).
-            Z = base[n, :, :]
-            hf = np.maximum(-Z, 0) * c.RHOSW / c.RHOI
+            B = topg[n, :, :]
+            hf = np.maximum(-B, 0) * c.RHOSW / c.RHOI
             values['lim'].append(np.sum(H * A) * c.RHOI)
             values['limnsw'].append(
                 np.sum(np.maximum(H - hf, 0) * A) * c.RHOI)
@@ -894,9 +920,9 @@ def compute_st_series(geom, c, region_mask, af2, maxmask1, area_m2):
             values['iareafl'].append(np.sum(sftflf[n, :, :] * A))
 
     if geom.hist_n_out > 0:
-        accumulate(geom.lithk_hist, geom.base_hist, geom.sftgrf_hist,
+        accumulate(geom.lithk_hist, geom.topg_hist, geom.sftgrf_hist,
                    geom.sftflf_hist, range(geom.hist_start, geom.n_hist))
-    accumulate(geom.lithk, geom.base, geom.sftgrf, geom.sftflf,
+    accumulate(geom.lithk, geom.topg, geom.sftgrf, geom.sftflf,
                range(geom.nt))
 
     return {name: np.asarray(vals) for name, vals in values.items()}
@@ -927,10 +953,10 @@ def _slc_meta(settings, regionName, scalar):
 
 
 def write_slc_outputs(settings, geom, regionName_raw, regionName, gic_suffix,
-                      file_stem, series, time_axis, write_nc, write_csv,
-                      csv_rows):
+                      file_stem, specs, series, time_axis, write_nc,
+                      write_csv, csv_rows):
     """Write NetCDF series and collect CSV rows for one mask."""
-    for (varname, long_name), values in zip(SLC_SPECS, series):
+    for (varname, long_name), values in zip(specs, series):
         stem = make_out_stem(varname, gic_suffix, regionName_raw, regionName,
                              file_stem, settings.flg_bm)
         if write_nc:
@@ -975,6 +1001,9 @@ def run(settings):
 
     # ---- SLC, once without GIC masking and once with ----
     # The plain variant comes first so that its rows lead the run-level CSV.
+    slc_specs = SLC_SPECS
+    if geom.base is not None:
+        slc_specs += BASE_SLC_SPECS
     warned_csv_years = False
     csv_rows = []
     for gic_mask, gic_suffix in [(np.ones_like(iaf2GIC), ''),
@@ -996,11 +1025,11 @@ def run(settings):
             series = compute_slc_series(geom, c, region_mask, af2, maxmask1,
                                         gic_mask, area_m2, exp_is_hist)
             if settings.verbose:
-                for (varname, _), values in zip(SLC_SPECS, series):
+                for (varname, _), values in zip(slc_specs, series):
                     print(f'  {varname}: {values}')
             write_slc_outputs(settings, geom, regionName_raw, regionName,
-                              gic_suffix, file_stem, series, time_axis,
-                              write_nc, write_csv, csv_rows)
+                              gic_suffix, file_stem, slc_specs, series,
+                              time_axis, write_nc, write_csv, csv_rows)
 
     if csv_rows:
         descriptor = mask_descriptor(settings.flg_mm, settings.flg_bm)
@@ -1043,6 +1072,8 @@ def run(settings):
                                          area_m2, exp_is_hist)
     else:
         skipped_scalars = []
+    if settings.base_variants and geom.base is None:
+        skipped_scalars += [name for name, _ in BASE_SLC_SPECS]
 
     if skipped_scalars:
         print('\nSkipped scalars (input files not found):')

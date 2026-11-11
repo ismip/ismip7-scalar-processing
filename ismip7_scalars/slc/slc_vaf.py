@@ -21,7 +21,7 @@ import numpy as np
 # its shelf against its grounded ice, so Vaf falls as the shelf thins.  With
 # the ice base (sea level over open water), Vaf is H + B*RHOSW/RHOI wherever
 # B is below sea level, which is linear, so its cell mean is exact.  The
-# processing therefore passes the ice base.
+# base variants (--base-variants) pass the ice base; the defaults pass the bed.
 def get_vaf(H,B,S,A,c):
   hf  = np.maximum(S-B,0.0)*c.RHOSW/c.RHOI
   hall= np.maximum(H-hf,0.0)

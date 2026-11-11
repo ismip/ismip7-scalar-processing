@@ -61,7 +61,8 @@ Every series is zero at the reference timestep.
 | slg20 | Goelzer et al. (2020) |
 | sla20 | Adhikari et al. (2020) |
 
-{doc}`slc-methods` describes them. Each is computed twice, with and without
+`--base-variants` adds two more, slvafbase and slg20base, written the same
+way. {doc}`slc-methods` describes them all. Each is computed twice, with and without
 glaciers and ice caps, and written like this:
 
 | | NetCDF | CSV |
@@ -85,7 +86,7 @@ The first ten columns identify the run and scalar:
 |---|---|
 | ice_source | AIS or GrIS |
 | region | the geographic mask name (ais, gris or a basin) |
-| scalar | `slvaf`, `slg20`, or `sla20`; `-gic` marks the GIC-excluded variant |
+| scalar | `slvaf`, `slg20`, `sla20`, and with `--base-variants` `slvafbase` and `slg20base`; `-gic` marks the GIC-excluded variant |
 | group, model, model_variant, scenario, GCM, forcingid, configid | the run's fields; model_variant is the ISM member ID, scenario the experiment |
 
 Then one column per nominal year, y1850 to y2300. Years the run does not cover

@@ -41,7 +41,7 @@ def make_args(modelpath, **overrides):
     args = dict(region='AIS', modelpath=modelpath, datapath=None,
                 params_path=None, outpath=None, exp_group=None, groups=None,
                 models=None, configids=None, histout=None, basins=False,
-                csv=None, netcdf=None, python='python')
+                base_variants=False, csv=None, netcdf=None, python='python')
     args.update(overrides)
     return SimpleNamespace(**args)
 
@@ -293,6 +293,15 @@ class TestBuildCommand:
         unit = make_unit(root, configid='C001', experiment='historical')
         cmd, _ = build_command(make_args(root, basins=True), unit, CORE)
         assert '--basins' in cmd
+
+    def test_base_variants_flag_is_passed_through(self, tmp_path):
+        root = str(tmp_path)
+        unit = make_unit(root, configid='C001', experiment='historical')
+        cmd, _ = build_command(make_args(root), unit, CORE)
+        assert '--base-variants' not in cmd
+        cmd, _ = build_command(make_args(root, base_variants=True), unit,
+                               CORE)
+        assert '--base-variants' in cmd
 
     @pytest.mark.parametrize('option,value,flag', [
         ('csv', True, '--csv'), ('csv', False, '--no-csv'),
