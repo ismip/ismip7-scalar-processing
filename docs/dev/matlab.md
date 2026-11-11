@@ -73,8 +73,9 @@ python compare_outputs.py --region AIS \
 `compare_outputs.py` walks the Python output tree recursively and matches each
 file against the MATLAB file at the same relative path, falling back to a
 recursive search by basename. It covers every output variable -- the three SLC
-methods, the four state scalars and the six flux scalars -- checking SLC against
-an absolute tolerance of 1 × 10⁻⁶ m and everything else against a relative
+methods and their base variants, the four state scalars and the six flux
+scalars -- checking SLC against an absolute tolerance of 1 × 10⁻⁶ m and
+everything else against a relative
 tolerance of 1 × 10⁻⁶, loose enough for the single precision (f4) the outputs
 are stored in. It also checks each file's `time_bounds` -- present in both or
 neither, on a `(time, nv)` dimension with the vertex dimension last as CF
