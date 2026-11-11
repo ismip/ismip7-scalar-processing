@@ -60,6 +60,32 @@ processing accumulates from the first historical timestep and subtracts the
 value at the reference year, so the projection continues the historical curve
 without a step at the join.
 
+## From the ice base (slvafbase, slg20base)
+
+With `--base-variants`, slvaf and slg20 are also computed with the ice base
+(the model's base variable) in place of the bed B in the volume above
+flotation, and written as slvafbase and slg20base. This is a trial: the
+defaults are unchanged, and the base variants are there to compare with them.
+
+The two differ only in a cell that is partly grounded and partly floating,
+where thickness and bed are cell means. With the bed, the water under the
+floating part is counted against the grounded ice, so the cell loses volume
+above flotation as its shelf thins, though no grounded ice is lost. With the
+ice base, the cell mean gives the right answer wherever the cell is below sea
+level. The same holds at the ice front, as long as base is at sea level over
+open water.
+
+In slg20base only the volume above flotation changes. The potential ocean
+volume is the space between the bed and sea level, so it still comes from the
+bed.
+
+There is no sla20base. The grounded and ocean masks of sla20 come from cell
+means of thickness and bed, so a cell the grounding line crosses counts as all
+grounded or all floating, and the ice base alone does not change that.
+
+If either run has no base file, the base variants are skipped with a warning
+and everything else is still written.
+
 ## Densities and ocean area
 
 Every method takes the densities from the model's params.nc. Using the

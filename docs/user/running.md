@@ -134,6 +134,9 @@ is *not* your model's own directory; see {doc}`file-conventions`. Use
 
 ## Other
 
+`--base-variants` also writes slvafbase and slg20base, which take the volume
+above flotation from the ice base rather than the bed; see {doc}`slc-methods`.
+
 `--verbose` prints field shapes and the computed series as it goes.
 `--version` prints the version and exits.
 
@@ -148,5 +151,6 @@ is *not* your model's own directory; see {doc}`file-conventions`. Use
 Exit 2 lets {doc}`ensemble` log a unit it could not process and carry on.
 Some inputs are only needed for part of the output: without sftgrf and sftflf
 the state scalars are skipped and everything else is still written, and each
-flux variable is skipped on its own if its file is absent. Those are
+flux variable is skipped on its own if its file is absent. With
+`--base-variants` and no base file, the base variants are skipped. Those are
 warnings, and the run still exits 0.

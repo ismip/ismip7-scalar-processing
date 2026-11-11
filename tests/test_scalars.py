@@ -910,6 +910,132 @@ class TestMissingInput:
 
 
 # ---------------------------------------------------------------------------
+# --base-variants: volume above flotation from the ice base
+
+
+WITH_BASE = ('lithk', 'topg', 'base', 'sftgrf', 'sftflf')
+
+
+class TestBaseVariants:
+    """slvafbase and slg20base take the ice base; see ``slc_vaf.get_vaf``."""
+
+    def _write(self, root, variables=WITH_BASE):
+        """Thin 1200 m of ice by 150 m a year, so that cells go from grounded
+        to floating.  Returns ``(datapath, modelpath)``."""
+        datapath = synthetic.write_data_files(os.path.join(root, 'Data',
+                                                           'AIS'))
+        modelpath = os.path.join(root, 'Models', 'AIS')
+        synthetic.write_params(modelpath)
+        for experiment, configid, start, initial in [
+                ('historical', 'C001', 2010, 1200.0),
+                ('ssp585', 'C007', 2013, 750.0)]:
+            synthetic.write_experiment(
+                modelpath, experiment=experiment, configid=configid,
+                start_year=start, nyears=3, initial=initial,
+                thinning_per_step=150.0, variables=variables)
+        return datapath, modelpath
+
+    def _run(self, root, outpath, capsys, *extra):
+        """Run on the submission at ``root``.  Returns what it printed."""
+        capsys.readouterr()
+        assert main(BASE_ARGS + [
+            '--datapath', os.path.join(root, 'Data', 'AIS'),
+            '--modelpath', os.path.join(root, 'Models', 'AIS'),
+            '--outpath', str(outpath), *extra]) == 0
+        return capsys.readouterr().out
+
+    def _scalars_in_csv(self, outpath):
+        path, = glob.glob(os.path.join(str(outpath), 'csv', 'sl_*.csv'))
+        with open(path, newline='') as f:
+            rows = list(csv.reader(f))
+        return [row[rows[0].index('scalar')] for row in rows[1:]]
+
+    def test_not_written_by_default(self, tmp_path, capsys):
+        root = str(tmp_path / 'sub')
+        self._write(root)
+        self._run(root, tmp_path / 'out', capsys)
+        assert glob.glob(os.path.join(nc_dir(tmp_path / 'out'),
+                                      '*base*.nc')) == []
+        assert not any('base' in name
+                       for name in self._scalars_in_csv(tmp_path / 'out'))
+
+    def test_written_alongside_the_others(self, tmp_path, capsys):
+        root = str(tmp_path / 'sub')
+        self._write(root)
+        outpath = tmp_path / 'out'
+        self._run(root, outpath, capsys, '--base-variants')
+        for varname in ('slvafbase', 'slg20base'):
+            values, _ = read_series(outpath, varname)
+            assert len(values) > 0
+        assert glob.glob(os.path.join(nc_dir(outpath), 'sla20base*')) == []
+        assert self._scalars_in_csv(outpath) == [
+            'slvaf', 'slg20', 'sla20', 'slvafbase', 'slg20base',
+            'slvaf-gic', 'slg20-gic', 'sla20-gic', 'slvafbase-gic',
+            'slg20base-gic']
+
+    def test_skipped_without_base(self, tmp_path, capsys):
+        root = str(tmp_path / 'sub')
+        self._write(root, variables=('lithk', 'topg', 'sftgrf', 'sftflf'))
+        outpath = tmp_path / 'out'
+        out = self._run(root, outpath, capsys, '--base-variants')
+        assert 'base missing for exp and hist' in out
+        assert 'Skipped scalars' in out
+        assert glob.glob(os.path.join(nc_dir(outpath), '*base*.nc')) == []
+        assert glob.glob(os.path.join(nc_dir(outpath), 'slvaf_*.nc'))
+
+    def test_base_and_bed_agree_where_no_cell_is_partly_floating(
+            self, tmp_path, capsys):
+        """At a point the ice base and the bed give the same VAF, so a
+        submission without partly floating cells gets the same answer."""
+        root = str(tmp_path / 'sub')
+        self._write(root)
+        outpath = tmp_path / 'out'
+        self._run(root, outpath, capsys, '--base-variants')
+        for varname in ('slvaf', 'slg20'):
+            a, _ = read_series(outpath, varname)
+            b, _ = read_series(outpath, f'{varname}base')
+            np.testing.assert_allclose(b, a, rtol=1e-10, atol=1e-12,
+                                       err_msg=varname)
+
+    def test_a_partly_floating_cell_is_measured_by_its_ice_base(
+            self, tmp_path, capsys):
+        """Raise the ice base of one grounded cell in the last year, as a
+        shelf over half of it would.  The base variants gain exactly what the
+        new base implies, and nothing else moves."""
+        root = str(tmp_path / 'sub')
+        self._write(root)
+        before = tmp_path / 'before'
+        self._run(root, before, capsys, '--base-variants')
+
+        exppath = os.path.join(root, 'Models', 'AIS', 'ISMIP7', 'SYNTH1',
+                               'CORE', 'C007')
+        base_file, = glob.glob(os.path.join(exppath, 'base_*.nc'))
+        # By the last year, column 4 is 450 m of ice grounded on a -367 m bed.
+        j, i, new_base = 0, 4, -200.0
+        with nc.Dataset(base_file, 'a') as ds:
+            old_base = float(ds.variables['base'][-1, j, i])
+            ds.variables['base'][-1, j, i] = new_base
+
+        after = tmp_path / 'after'
+        self._run(root, after, capsys, '--base-variants')
+
+        rhoi, rhosw, rhofw = 917.0, 1027.0, 1000.0
+        dvaf = (new_base - old_base) * rhosw / rhoi * synthetic.DX ** 2
+        expected = {
+            'slvafbase': -dvaf * rhoi / rhofw / 3.625e14,
+            'slg20base': -dvaf * rhoi / rhosw / 3.625e14,
+            'slvaf': 0.0, 'slg20': 0.0, 'sla20': 0.0, 'limnsw': 0.0,
+        }
+        # The output is single precision.
+        for varname, change in expected.items():
+            a, _ = read_series(before, varname)
+            b, _ = read_series(after, varname)
+            assert b[:-1] == pytest.approx(a[:-1], rel=1e-12), varname
+            assert float(b[-1]) - float(a[-1]) == pytest.approx(
+                change, rel=1e-4, abs=1e-15), varname
+
+
+# ---------------------------------------------------------------------------
 # The historical run processed on its own
 
 

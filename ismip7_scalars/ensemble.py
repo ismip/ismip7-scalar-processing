@@ -176,6 +176,8 @@ def build_command(args, unit, core):
         cmd += ['--histout', str(args.histout)]
     if args.basins:
         cmd += ['--basins']
+    if args.base_variants:
+        cmd += ['--base-variants']
     if args.csv is not None:
         cmd += ['--csv' if args.csv else '--no-csv']
     if args.netcdf is not None:
@@ -212,6 +214,8 @@ def build_parser():
     parser.add_argument('--histout', type=int, default=None,
                         help='Passed through')
     parser.add_argument('--basins', action='store_true',
+                        help='Passed through')
+    parser.add_argument('--base-variants', action='store_true',
                         help='Passed through')
     parser.add_argument('--csv', action=argparse.BooleanOptionalAction,
                         default=None,

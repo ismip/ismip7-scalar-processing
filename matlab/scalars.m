@@ -11,6 +11,7 @@ if ~exist('outpath',       'var'), outpath       = '../Output';  end
 if ~exist('histout',       'var'), histout       = -1;           end  % -1 = all hist timesteps
 if ~exist('flg_mm',        'var'), flg_mm        = true;         end  % whole ice sheet integral
 if ~exist('flg_bm',        'var'), flg_bm        = false;        end  % IMBIE3 basins
+if ~exist('flg_base',      'var'), flg_base      = false;        end  % also slvafbase, slg20base
 
 % Region-specific defaults
 switch region
@@ -200,11 +201,18 @@ for i = 1:length(time_info.Attributes)
 end
 
 topg = double(ncread(find_model_file(exppath, 'topg', region, group, model, modelid, esm, forcingid, exp, configid), 'topg')); % (nx, ny, nt)
+% The base variants take the volume above flotation from the ice base; see get_vaf
+if flg_base
+    base = double(ncread(find_model_file(exppath, 'base', region, group, model, modelid, esm, forcingid, exp, configid), 'base'));
+end
 
 % Historical experiment
 hist_lithk_file = find_model_file(histpath, 'lithk', region, group, model, modelid, esm, forcingid, hist, hist_configid);
 lithk_hist_all  = double(ncread(hist_lithk_file, 'lithk'));
 topg_hist_all   = double(ncread(find_model_file(histpath, 'topg', region, group, model, modelid, esm, forcingid, hist, hist_configid), 'topg'));
+if flg_base
+    base_hist_all = double(ncread(find_model_file(histpath, 'base', region, group, model, modelid, esm, forcingid, hist, hist_configid), 'base'));
+end
 time_hist       = double(ncread(hist_lithk_file, 'time'));
 n_hist          = size(lithk_hist_all, 3);
 
@@ -239,6 +247,9 @@ else
 end
 lithk_ref = lithk_hist_all(:,:,ref_idx);
 topg_ref  = topg_hist_all(:,:,ref_idx);
+if flg_base
+    base_ref = base_hist_all(:,:,ref_idx);
+end
 
 % If refyear not found in hist, search exp
 if ref_in_exp
@@ -248,6 +259,9 @@ if ref_in_exp
     end
     lithk_ref = lithk(:,:,ref_idx_exp);
     topg_ref  = topg(:,:,ref_idx_exp);
+    if flg_base
+        base_ref = base(:,:,ref_idx_exp);
+    end
 end
 
 % Model density parameters
@@ -341,6 +355,9 @@ for igic = 1:2
     % Reference state for this GIC mode
     H0 = lithk_ref .* maxmask1 .* gic_mask;
     B0 = topg_ref;
+    if flg_base
+        Z0 = base_ref;
+    end
     % TODO clarify if S0=0 is correct for all models
     S0 = topg_ref * 0.0; % sea level fixed at 0
 
@@ -363,19 +380,30 @@ for igic = 1:2
         sl_VAF = zeros(nt, 1);
         sl_G20 = zeros(nt, 1);
         sl_A20 = zeros(nt, 1);
+        sl_VAFb = zeros(nt, 1);
+        sl_G20b = zeros(nt, 1);
         VAF_hist = [];
         G20_hist = [];
         A20_hist = [];
+        VAFb_hist = [];
+        G20b_hist = [];
 
         % ---- Hist portion (VAF, G2020, and non-cumulative A2020) ----
         if hist_n_out > 0
             VAF_hist = zeros(hist_n_out, 1);
             G20_hist = zeros(hist_n_out, 1);
+            VAFb_hist = zeros(hist_n_out * flg_base, 1);
+            G20b_hist = zeros(hist_n_out * flg_base, 1);
             for n = 1:hist_n_out
                 H              = lithk_hist_all(:,:, hist_start + n) .* maxmask1 .* gic_mask;
                 B              = topg_hist_all(:,:,  hist_start + n);
                 VAF_hist(n)    = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
-                G20_hist(n)    = get_slc_G2020(H0, H, B0, B, A, c);
+                G20_hist(n)    = get_slc_G2020(H0, H, B0, B, B0, B, A, c);
+                if flg_base
+                    Z            = base_hist_all(:,:, hist_start + n);
+                    VAFb_hist(n) = get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c);
+                    G20b_hist(n) = get_slc_G2020(H0, H, B0, B, Z0, Z, A, c);
+                end
             end
             if ~flg_A20_cumul
                 A20_hist = zeros(hist_n_out, 1);
@@ -392,7 +420,12 @@ for igic = 1:2
             H         = lithk(:,:,n) .* maxmask1 .* gic_mask;
             B         = topg(:,:,n);
             sl_VAF(n) = get_slc_vaf(H0, H, B0, B, S0, S0, A, c);
-            sl_G20(n) = get_slc_G2020(H0, H, B0, B, A, c);
+            sl_G20(n) = get_slc_G2020(H0, H, B0, B, B0, B, A, c);
+            if flg_base
+                Z          = base(:,:,n);
+                sl_VAFb(n) = get_slc_vaf(H0, H, Z0, Z, S0, S0, A, c);
+                sl_G20b(n) = get_slc_G2020(H0, H, B0, B, Z0, Z, A, c);
+            end
         end
 
         % ---- A2020 (method-dependent) ----
@@ -454,6 +487,8 @@ for igic = 1:2
         sl_VAF = [VAF_hist; sl_VAF];
         sl_G20 = [G20_hist; sl_G20];
         sl_A20 = [A20_hist; sl_A20];
+        sl_VAFb = [VAFb_hist; sl_VAFb];
+        sl_G20b = [G20b_hist; sl_G20b];
 
         if verbose
             disp(sl_VAF');
@@ -469,6 +504,12 @@ for igic = 1:2
             'slg20', 'Sea level contribution based on G2020', sl_G20; ...
             'sla20', 'Sea level contribution based on A2020', sl_A20; ...
         };
+        if flg_base
+            nc_vars = [nc_vars; { ...
+                'slvafbase', 'Sea level contribution based on Vaf, from the ice base',   sl_VAFb; ...
+                'slg20base', 'Sea level contribution based on G2020, from the ice base', sl_G20b; ...
+            }];
+        end
         for iv = 1:size(nc_vars, 1)
             varname   = nc_vars{iv,1};
             long_name = nc_vars{iv,2};
@@ -502,6 +543,9 @@ for igic = 1:2
             'slg20', sl_G20; ...
             'sla20', sl_A20; ...
         };
+        if flg_base
+            csv_vars = [csv_vars; {'slvafbase', sl_VAFb; 'slg20base', sl_G20b}];
+        end
         for iv = 1:size(csv_vars, 1)
             varname  = csv_vars{iv,1};
             sl_data  = csv_vars{iv,2};
@@ -1017,7 +1061,8 @@ end
 % ---- VAF (Volume Above Flotation, ISMIP6 method) ----
 
 function vol = get_vaf(H, B, S, A, c)
-% Volume above flotation; B and S in absolute reference frame
+% Volume above flotation; B and S in absolute reference frame.  The base
+% variants pass the ice base as B: see get_vaf in slc/slc_vaf.py for why.
     hf   = max(S - B, 0.0) * c.RHOSW / c.RHOI;
     hall = max(H - hf, 0.0);
     vol  = sum(hall .* A, 'all');
@@ -1051,9 +1096,11 @@ function vol = get_vden_G2020(H, A, c)
     vol = sum(H .* (c.RHOI/c.RHOFW - c.RHOI/c.RHOSW) .* A, 'all');
 end
 
-function slc = get_slc_G2020(H0, H, B0, B, A, c)
-% eq. 12/15 — total SLC combining three components
-    slc_af  = -(get_vaf_G2020(H,  B,  A, c) - get_vaf_G2020(H0, B0, A, c)) / c.AO * c.RHOI/c.RHOSW;
+function slc = get_slc_G2020(H0, H, B0, B, Z0, Z, A, c)
+% eq. 12/15 — total SLC combining three components.  The above-flotation
+% term takes Z, which is the bed B except in the base variants, where it is the
+% ice base; the potential ocean volume always takes the bed.
+    slc_af  = -(get_vaf_G2020(H,  Z,  A, c) - get_vaf_G2020(H0, Z0, A, c)) / c.AO * c.RHOI/c.RHOSW;
     slc_pov = -(get_vpov_G2020(B,  A)        - get_vpov_G2020(B0, A))        / c.AO;
     slc_den = -(get_vden_G2020(H,  A, c)     - get_vden_G2020(H0, A, c))     / c.AO;
     slc = slc_af + slc_pov + slc_den;

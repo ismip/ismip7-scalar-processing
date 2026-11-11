@@ -28,7 +28,7 @@ parser.add_argument("--py-outpath",  default="../Output/nc")
 parser.add_argument("--mat-outpath", default="../Output/nc")
 args = parser.parse_args()
 
-SLC_VARS = {'slvaf', 'slg20', 'sla20'}
+SLC_VARS = {'slvaf', 'slg20', 'sla20', 'slvafbase', 'slg20base'}
 ABS_TOL  = 1e-6    # metres — applied to SLC variables; f4 output storage
                    # quantises values to ~6e-8 relative
 REL_TOL  = 1e-6    # applied to all other variables (relative to data max)

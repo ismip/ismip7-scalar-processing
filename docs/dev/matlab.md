@@ -18,9 +18,10 @@ matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 Set workspace variables before `run()` to override any default: `group`,
 `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`,
 `hist_exp_group`, `hist_configid`, `refyear`, `histout`, `flg_mm`, `flg_bm`,
-`datapath`, `modelpath`, `params_path`, `outpath`. They correspond one for one
-with the command-line options in {doc}`../user/running`; `flg_bm` is
-`--basins` and `flg_mm=false` is `--no-mm`. Resolution is auto-detected the same
+`flg_base`, `datapath`, `modelpath`, `params_path`, `outpath`. They correspond
+one for one with the command-line options in {doc}`../user/running`; `flg_bm`
+is `--basins`, `flg_mm=false` is `--no-mm` and `flg_base=true` is
+`--base-variants`. Resolution is auto-detected the same
 way. As in Python, `refyear` defaults to the last hist step, or 2015 for a
 self-paired ocx run.
 
@@ -31,7 +32,8 @@ The Python behaviour exists for the batch driver, which has no MATLAB
 counterpart.
 
 **Optional variables.** Python treats `sftgrf`/`sftflf` and the flux variables
-as optional, skipping the output that needs them; MATLAB requires them.
+as optional, skipping the output that needs them, and with `--base-variants`
+skips the base variants when `base` is missing. MATLAB requires them all.
 
 **Variable metadata.** Python reads each scalar's `standard_name`, `units` and
 `long_name` from the data request in the installed `isschecker` package (see
@@ -71,8 +73,9 @@ python compare_outputs.py --region AIS \
 `compare_outputs.py` walks the Python output tree recursively and matches each
 file against the MATLAB file at the same relative path, falling back to a
 recursive search by basename. It covers every output variable -- the three SLC
-methods, the four state scalars and the six flux scalars -- checking SLC against
-an absolute tolerance of 1 × 10⁻⁶ m and everything else against a relative
+methods and their base variants, the four state scalars and the six flux
+scalars -- checking SLC against an absolute tolerance of 1 × 10⁻⁶ m and
+everything else against a relative
 tolerance of 1 × 10⁻⁶, loose enough for the single precision (f4) the outputs
 are stored in. It also checks each file's `time_bounds` -- present in both or
 neither, on a `(time, nv)` dimension with the vertex dimension last as CF

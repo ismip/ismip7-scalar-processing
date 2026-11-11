@@ -68,7 +68,7 @@ than have it guess.
 
 ## Time encoding
 
-State variables (lithk, topg, sftgrf, sftflf) are stamped Jan 1 of the
+State variables (lithk, topg, base, sftgrf, sftflf) are stamped Jan 1 of the
 *following* year: the value for 2015 carries the timestamp 2016-01-01. Flux
 variables (acabf, licalvf and the rest) are stamped Jul 1 of the year itself,
 with time bounds.
