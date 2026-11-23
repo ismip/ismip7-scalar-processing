@@ -80,8 +80,8 @@ class TestLoadCoreCsv:
             assert hcid is not None, cid
             assert core[hcid]['scenario'] == 'historical'
 
-    def test_experiment_without_a_forcing_esm_has_no_parity_pair(self):
-        """``ocx`` (C011) has no ESM column, so the parity rule gives no pair.
+    def test_experiment_without_a_forcing_esm_has_no_pair(self):
+        """``ocx`` (C011) has no ESM column, so the table gives no pair.
 
         The driver handles C011 as a self-paired scenario instead of asking
         this rule, which must never hand a configid back to itself.

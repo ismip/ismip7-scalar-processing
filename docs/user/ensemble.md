@@ -57,6 +57,10 @@ reason rather than measured against itself, which would produce a
 plausible-looking series that is wrong. Run it by hand with
 `ismip7-scalars --hist-configid`, or add the row and re-run the batch.
 
+The table always wins: a link only fills in a configid the table does not
+list, and applies to any such configid — a future CORE experiment too, not
+only ESM and PPE.
+
 ## Options
 
 | Option | Meaning |
@@ -74,7 +78,9 @@ plausible-looking series that is wrong. Run it by hand with
 | `--log-dir` | where the logs go; default Output/logs |
 
 `--no-csv --no-netcdf` together is refused before any run starts, since every
-unit would do its work and write nothing.
+unit would do its work and write nothing. So is a `--hist-links` file that is
+missing or holds no usable rows: the batch would otherwise skip every
+unpaired experiment on a typo in the path.
 
 ## Logs
 
