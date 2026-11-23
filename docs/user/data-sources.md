@@ -30,8 +30,12 @@ standard name.
 
 ISMIP7_experiments_CORE.csv, inside the package, records which CORE configid
 runs which scenario under which forcing ESM. The ensemble driver uses it to
-pair each projection with its historical run: C001 for CESM, C002 for MRI.
-Override it with `ismip7-scalars-ensemble --core-csv`.
+pair each CORE projection with its historical run: C001 for CESM, C002 for
+MRI. Override it with `ismip7-scalars-ensemble --core-csv`.
+
+ESM and PPE experiments are not in the table; their historical runs are
+declared by hand in a `--hist-links` CSV (see {doc}`ensemble`), which is
+user-supplied rather than bundled.
 
 ## The area factors and masks, from Globus
 

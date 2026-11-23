@@ -22,6 +22,7 @@ from ismip7_scalars.ensemble import (
     hist_configid_for,
     keep_unit,
     load_core_csv,
+    load_hist_links,
     main,
     unit_status,
 )
@@ -41,7 +42,8 @@ def make_args(modelpath, **overrides):
     args = dict(region='AIS', modelpath=modelpath, datapath=None,
                 params_path=None, outpath=None, exp_group=None, groups=None,
                 models=None, configids=None, histout=None, basins=False,
-                base_variants=False, csv=None, netcdf=None, python='python')
+                base_variants=False, csv=None, netcdf=None, python='python',
+                hist_links=None)
     args.update(overrides)
     return SimpleNamespace(**args)
 
@@ -78,8 +80,8 @@ class TestLoadCoreCsv:
             assert hcid is not None, cid
             assert core[hcid]['scenario'] == 'historical'
 
-    def test_experiment_without_a_forcing_esm_has_no_parity_pair(self):
-        """``ocx`` (C011) has no ESM column, so the parity rule gives no pair.
+    def test_experiment_without_a_forcing_esm_has_no_pair(self):
+        """``ocx`` (C011) has no ESM column, so the table gives no pair.
 
         The driver handles C011 as a self-paired scenario instead of asking
         this rule, which must never hand a configid back to itself.
@@ -93,6 +95,35 @@ class TestLoadCoreCsv:
         assert 'WARNING' in capsys.readouterr().out
 
 
+class TestLoadHistLinks:
+    def test_two_column_row_links_the_projection_group(self, tmp_path):
+        path = tmp_path / 'links.csv'
+        path.write_text('configid,hist_configid\nP007,P001\n')
+        assert load_hist_links(str(path)) == {'P007': ('P001', None)}
+
+    def test_explicit_hist_exp_group_column_is_kept(self, tmp_path):
+        path = tmp_path / 'links.csv'
+        path.write_text('configid,hist_configid,hist_exp_group\n'
+                        'E005,C001,CORE\n')
+        assert load_hist_links(str(path)) == {'E005': ('C001', 'CORE')}
+
+    def test_malformed_row_is_skipped_with_a_warning(self, tmp_path, capsys):
+        path = tmp_path / 'links.csv'
+        path.write_text('configid,hist_configid\nP007\nE005,C001\n')
+        assert load_hist_links(str(path)) == {'E005': ('C001', None)}
+        assert 'malformed' in capsys.readouterr().out
+
+    def test_missing_file_returns_empty(self, tmp_path):
+        assert load_hist_links(str(tmp_path / 'nope.csv')) == {}
+
+    def test_bom_and_crlf_are_tolerated(self, tmp_path):
+        """The bundled CORE table ships with a BOM; links files may too."""
+        path = tmp_path / 'links.csv'
+        path.write_bytes(
+            '﻿configid,hist_configid\r\nP007,P001\r\n'.encode('utf-8'))
+        assert load_hist_links(str(path)) == {'P007': ('P001', None)}
+
+
 class TestHistConfigidFor:
     def test_cesm_projection_pairs_with_c001(self):
         assert hist_configid_for('C003', CORE) == 'C001'
@@ -100,8 +131,15 @@ class TestHistConfigidFor:
     def test_mri_projection_pairs_with_c002(self):
         assert hist_configid_for('C004', CORE) == 'C002'
 
-    def test_even_configid_outside_the_table_falls_back_to_parity(self):
-        assert hist_configid_for('E004', CORE) == 'E003'
+    def test_even_configid_outside_the_table_has_no_pair(self):
+        """An ESM/PPE configid's number carries no hist/projection order.
+
+        The parity fallback used to pair an even configid with the odd one
+        below it, which guesses a historical run the numbering does not
+        define. ESM/PPE projections must be declared with --hist-links
+        instead.
+        """
+        assert hist_configid_for('E004', CORE) is None
 
     def test_odd_configid_outside_the_table_has_no_pair(self):
         """It must not pair a projection with itself.
@@ -162,7 +200,7 @@ class TestBuildCommand:
         make_unit(root, configid='C001', experiment='historical',
                   years='1850-2014')
         unit = make_unit(root, configid='C003', experiment='ssp370')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is not None
         assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
         assert cmd[cmd.index('--hist') + 1] == 'historical'
@@ -173,7 +211,7 @@ class TestBuildCommand:
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical',
                          years='1850-2014')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
         assert 'self-paired' in note
 
@@ -183,7 +221,7 @@ class TestBuildCommand:
         root = str(tmp_path)
         unit = make_unit(root, configid='C011', experiment='ocx',
                          esm='ERA5', years='1958-2025')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is not None
         assert cmd[cmd.index('--hist-configid') + 1] == 'C011'
         assert cmd[cmd.index('--hist') + 1] == 'ocx'
@@ -197,7 +235,7 @@ class TestBuildCommand:
                   years='1850-2014')
         unit = make_unit(root, configid='C009', experiment='ctrl',
                          years='2015-2300')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is not None
         assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
         assert cmd[cmd.index('--hist') + 1] == 'historical'
@@ -207,13 +245,13 @@ class TestBuildCommand:
     def test_invokes_the_installed_module(self, tmp_path):
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical')
-        cmd, _ = build_command(make_args(root), unit, CORE)
+        cmd, _ = build_command(make_args(root), unit, CORE, {})
         assert cmd[1:3] == ['-m', 'ismip7_scalars']
 
     def test_missing_historical_is_skipped(self, tmp_path):
         root = str(tmp_path)
         unit = make_unit(root, configid='C003', experiment='ssp370')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is None
         assert 'no historical C001' in note
 
@@ -222,7 +260,7 @@ class TestBuildCommand:
         root = str(tmp_path)
         unit = make_unit(root, exp_group='ESM', configid='E003',
                          experiment='ssp585')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is None
         assert 'E003' in note
 
@@ -230,13 +268,13 @@ class TestBuildCommand:
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', var='topg',
                          experiment='historical')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is None and note == 'no lithk file'
 
     def test_non_strict_filename_is_skipped(self, tmp_path):
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', fname='lithk_AIS_junk.nc')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is None and 'non-strict filename' in note
 
     def test_filename_configid_must_match_the_directory(self, tmp_path):
@@ -248,7 +286,7 @@ class TestBuildCommand:
             os.path.join(unit[4],
                          'lithk_AIS_ISMIP7_SYNTH1_m001_CESM2-WACCM_f001'
                          '_historical_C005_1850-2014.nc'))
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is None and 'non-strict filename' in note
 
     def test_filename_group_must_match_the_directory(self, tmp_path):
@@ -259,14 +297,14 @@ class TestBuildCommand:
                           'lithk_AIS_OTHER_SYNTH1_m001_CESM2-WACCM_f001'
                           '_historical_C001_1850-2014.nc'), 'wb').close()
         unit = ('ISMIP7', 'SYNTH1', 'CORE', 'C001', path)
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is None and 'group/model field' in note
 
     def test_wrong_region_is_skipped(self, tmp_path):
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', region='GrIS',
                          experiment='historical')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        cmd, note = build_command(make_args(root), unit, CORE, {})
         assert cmd is None and 'non-strict filename' in note
 
     @pytest.mark.parametrize('option,value,flag', [
@@ -278,29 +316,29 @@ class TestBuildCommand:
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical')
         args = make_args(root, **{option: value})
-        cmd, _ = build_command(args, unit, CORE)
+        cmd, _ = build_command(args, unit, CORE, {})
         assert cmd[cmd.index(flag) + 1] == value
 
     def test_histout_zero_is_passed_through(self, tmp_path):
         """0 is a meaningful value, so it must not be treated as unset."""
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical')
-        cmd, _ = build_command(make_args(root, histout=0), unit, CORE)
+        cmd, _ = build_command(make_args(root, histout=0), unit, CORE, {})
         assert cmd[cmd.index('--histout') + 1] == '0'
 
     def test_basins_flag_is_passed_through(self, tmp_path):
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical')
-        cmd, _ = build_command(make_args(root, basins=True), unit, CORE)
+        cmd, _ = build_command(make_args(root, basins=True), unit, CORE, {})
         assert '--basins' in cmd
 
     def test_base_variants_flag_is_passed_through(self, tmp_path):
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical')
-        cmd, _ = build_command(make_args(root), unit, CORE)
+        cmd, _ = build_command(make_args(root), unit, CORE, {})
         assert '--base-variants' not in cmd
         cmd, _ = build_command(make_args(root, base_variants=True), unit,
-                               CORE)
+                               CORE, {})
         assert '--base-variants' in cmd
 
     @pytest.mark.parametrize('option,value,flag', [
@@ -311,29 +349,100 @@ class TestBuildCommand:
                                                flag):
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical')
-        cmd, _ = build_command(make_args(root, **{option: value}), unit, CORE)
+        cmd, _ = build_command(make_args(root, **{option: value}), unit,
+                               CORE, {})
         assert flag in cmd
 
     def test_unset_format_options_are_not_passed_through(self, tmp_path):
         root = str(tmp_path)
         unit = make_unit(root, configid='C001', experiment='historical')
-        cmd, _ = build_command(make_args(root), unit, CORE)
+        cmd, _ = build_command(make_args(root), unit, CORE, {})
         assert '--csv' not in cmd
         assert '--no-csv' not in cmd
         assert '--netcdf' not in cmd
         assert '--no-netcdf' not in cmd
 
-    def test_scenario_unknown_to_the_table_uses_the_filename(self, tmp_path):
-        """A PPE experiment is not in the CORE table but is still a projection."""
+    def test_scenario_unknown_to_the_table_uses_a_declared_link(self, tmp_path):
+        """A PPE projection pairs only as declared: by --hist-links, not by
+        its configid's number."""
         root = str(tmp_path)
         make_unit(root, exp_group='PPE', configid='P001',
                   experiment='historical', years='1850-2014')
         unit = make_unit(root, exp_group='PPE', configid='P002',
                          experiment='ssp585')
-        cmd, note = build_command(make_args(root), unit, CORE)
+        args = make_args(root, hist_links='links.csv')
+        links = {'P002': ('P001', None)}
+        cmd, note = build_command(args, unit, CORE, links)
         assert cmd is not None
         assert cmd[cmd.index('--hist-configid') + 1] == 'P001'
+        assert cmd[cmd.index('--hist-exp-group') + 1] == 'PPE'
         assert cmd[cmd.index('--exp-group') + 1] == 'PPE'
+
+    def test_link_can_point_into_another_exp_group(self, tmp_path):
+        """An ESM projection referencing the CORE historical run names the
+        group explicitly in its link."""
+        root = str(tmp_path)
+        make_unit(root, configid='C001', experiment='historical',
+                  years='1850-2014')
+        unit = make_unit(root, exp_group='ESM', configid='E005',
+                         experiment='ssp126')
+        links = {'E005': ('C001', 'CORE')}
+        cmd, note = build_command(make_args(root), unit, CORE, links)
+        assert cmd is not None
+        assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
+        assert cmd[cmd.index('--hist-exp-group') + 1] == 'CORE'
+
+    def test_projection_without_a_link_is_skipped(self, tmp_path):
+        root = str(tmp_path)
+        unit = make_unit(root, exp_group='PPE', configid='P007',
+                         experiment='ssp585')
+        cmd, note = build_command(make_args(root), unit, CORE, {})
+        assert cmd is None
+        assert 'no historical run is defined for P007' in note
+        assert '--hist-links' in note
+
+    def test_link_to_a_missing_historical_is_skipped(self, tmp_path):
+        root = str(tmp_path)
+        unit = make_unit(root, exp_group='PPE', configid='P007',
+                         experiment='ssp585')
+        links = {'P007': ('P001', None)}
+        cmd, note = build_command(make_args(root), unit, CORE, links)
+        assert cmd is None and 'no historical P001' in note
+
+    def test_link_to_itself_is_refused(self, tmp_path):
+        root = str(tmp_path)
+        unit = make_unit(root, exp_group='PPE', configid='P007',
+                         experiment='ssp585')
+        links = {'P007': ('P007', None)}
+        cmd, note = build_command(make_args(root), unit, CORE, links)
+        assert cmd is None
+        assert 'paired against itself' in note
+
+    def test_a_link_never_overrides_a_table_entry(self, tmp_path):
+        """The CORE table always wins: a links row for a configid the table
+        lists is ignored."""
+        root = str(tmp_path)
+        make_unit(root, configid='C001', experiment='historical',
+                  years='1850-2014')
+        unit = make_unit(root, configid='C003', experiment='ssp370')
+        links = {'C003': ('P001', 'PPE')}
+        cmd, note = build_command(make_args(root), unit, CORE, links)
+        assert cmd is not None
+        assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
+        assert cmd[cmd.index('--hist-exp-group') + 1] == 'CORE'
+        assert 'hist C001' in note
+
+    def test_self_paired_scenario_ignores_a_declared_link(self, tmp_path):
+        """historical is its own reference; a links row does not change
+        that."""
+        root = str(tmp_path)
+        unit = make_unit(root, exp_group='PPE', configid='P001',
+                         experiment='historical', years='1850-2014')
+        links = {'P001': ('P009', None)}
+        cmd, note = build_command(make_args(root), unit, CORE, links)
+        assert cmd is not None
+        assert cmd[cmd.index('--hist-configid') + 1] == 'P001'
+        assert 'self-paired' in note
 
 
 class TestKeepUnit:
@@ -397,3 +506,66 @@ class TestParser:
             main(['--region', 'AIS', '--modelpath', str(tmp_path),
                   '--no-csv', '--no-netcdf'])
         assert exc.value.code == 2
+
+    def test_missing_hist_links_file_is_an_error(self, tmp_path):
+        """The batch would otherwise skip every unpaired experiment on a
+        typo in the path."""
+        with pytest.raises(SystemExit) as exc:
+            main(['--region', 'AIS', '--modelpath', str(tmp_path),
+                  '--hist-links', str(tmp_path / 'nope.csv')])
+        assert exc.value.code == 2
+
+    def test_hist_links_file_without_usable_rows_is_an_error(self, tmp_path):
+        with pytest.raises(SystemExit) as exc:
+            main(['--region', 'AIS', '--modelpath', str(tmp_path),
+                  '--hist-links',
+                  str(self._links_file(tmp_path, 'configid,hist_configid\n'
+                                             'P007\n'))])
+        assert exc.value.code == 2
+
+    @staticmethod
+    def _links_file(tmp_path, text):
+        path = tmp_path / 'links.csv'
+        path.write_text(text)
+        return path
+
+
+class TestMainDryRun:
+    """The parse -> links -> plan -> summary wiring, end to end."""
+
+    def test_links_pair_ppe_projections_end_to_end(self, tmp_path, capsys):
+        root = str(tmp_path / 'models')
+        make_unit(root, exp_group='PPE', configid='P001',
+                  experiment='historical', years='1850-2014')
+        make_unit(root, exp_group='PPE', configid='P007',
+                  experiment='ssp585')
+        links = self._links_file(tmp_path, 'configid,hist_configid\n'
+                                           'P007,P001\n')
+        rc = main(['--region', 'AIS', '--modelpath', root, '--dry-run',
+                   '--hist-links', str(links),
+                   '--log-dir', str(tmp_path / 'logs')])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert '[PLAN] ISMIP7/SYNTH1/PPE/P001 -- self-paired (historical)' \
+            in out
+        assert '[PLAN] ISMIP7/SYNTH1/PPE/P007 -- ssp585 -> hist P001' in out
+        # The summary is written even for a dry run.
+        assert any((tmp_path / 'logs').glob('ensemble_AIS_*.log'))
+
+    def test_unlinked_ppe_projections_are_skipped_end_to_end(self, tmp_path,
+                                                             capsys):
+        root = str(tmp_path / 'models')
+        make_unit(root, exp_group='PPE', configid='P007',
+                  experiment='ssp585')
+        rc = main(['--region', 'AIS', '--modelpath', root, '--dry-run',
+                   '--log-dir', str(tmp_path / 'logs')])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert '[SKIP] ISMIP7/SYNTH1/PPE/P007' in out
+        assert '--hist-links' in out
+
+    @staticmethod
+    def _links_file(tmp_path, text):
+        path = tmp_path / 'links.csv'
+        path.write_text(text)
+        return path

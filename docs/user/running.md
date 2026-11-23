@@ -47,6 +47,11 @@ ismip7-scalars --region AIS --configid C007 --experiment ssp585 \
     --hist historical --hist-configid C001
 ```
 
+ESM and PPE projections pair the same way — by an explicit
+`--hist-configid` per run, or by a declared links CSV when the ensemble
+driver batches them ({doc}`ensemble`); their configid numbering is not a
+pairing rule.
+
 To process the historical run on its own, give it as the experiment too
 (`--experiment historical`). It is then its own reference and nothing is
 prepended.

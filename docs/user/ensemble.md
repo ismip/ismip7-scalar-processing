@@ -33,17 +33,33 @@ processed as though it were something else.
 ## How projections are paired with a historical run
 
 The CORE experiment table bundled with the package gives each configid its
-scenario and forcing ESM. A projection is paired with the historical run
-driven by the same ESM: CESM projections with C001, MRI projections with
-C002. Historical and ocx experiments are their own reference — ocx from the
-state at the end of nominal 2014 (stamped 2015), which the pipeline defaults —
-and ctrl is paired with its historical run like the ssp scenarios.
+scenario and forcing ESM. A CORE projection is paired with the historical
+run driven by the same ESM: CESM projections with C001, MRI projections
+with C002. Historical and ocx experiments are their own reference — ocx
+from the state at the end of nominal 2014 (stamped 2015), which the
+pipeline defaults — and ctrl is paired with its historical run like the
+ssp scenarios.
 
-For a configid the table does not know, such as a future ESM or PPE
-experiment, the driver pairs an even configid with the odd one below it. If
-that gives nothing, the experiment is skipped with a reason rather than
-measured against itself, which would produce a plausible-looking series that
-is wrong. Pair those by hand with `ismip7-scalars --hist-configid`.
+ESM and PPE experiments are not in the CORE table, and their configid
+numbering carries no hist/projection order to read a pairing out of. They
+are paired only as declared: a `--hist-links` CSV with one row per
+projection, `configid,hist_configid` plus an optional `hist_exp_group`
+when the historical run lives in another experiment group:
+
+```
+configid,hist_configid,hist_exp_group
+P007,P001
+E005,C001,CORE
+```
+
+A projection with neither a table entry nor a link is skipped with a
+reason rather than measured against itself, which would produce a
+plausible-looking series that is wrong. Run it by hand with
+`ismip7-scalars --hist-configid`, or add the row and re-run the batch.
+
+The table always wins: a link only fills in a configid the table does not
+list, and applies to any such configid — a future CORE experiment too, not
+only ESM and PPE.
 
 ## Options
 
@@ -57,11 +73,14 @@ is wrong. Pair those by hand with `ismip7-scalars --hist-configid`.
 | `--datapath`, `--params-path`, `--outpath`, `--histout`, `--basins`, `--base-variants` | passed through to each run |
 | `--csv`, `--no-csv`, `--netcdf`, `--no-netcdf` | output format overrides passed through to each run |
 | `--core-csv` | use a different experiment table |
+| `--hist-links` | CSV of historical runs for configids outside the table (ESM/PPE) |
 | `--python` | interpreter to run each experiment with |
 | `--log-dir` | where the logs go; default Output/logs |
 
 `--no-csv --no-netcdf` together is refused before any run starts, since every
-unit would do its work and write nothing.
+unit would do its work and write nothing. So is a `--hist-links` file that is
+missing or holds no usable rows: the batch would otherwise skip every
+unpaired experiment on a typo in the path.
 
 ## Logs
 

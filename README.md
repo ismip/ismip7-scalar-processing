@@ -72,8 +72,9 @@ page walks through this.
 ## MATLAB
 
 matlab/scalars.m computes the same scalars from the same inputs into the same
-layout, and is kept numerically identical to the Python implementation. It is
-run from a checkout rather than installed; see the
+layout, and is kept numerically identical to the Python implementation, and
+matlab/ensemble.m mirrors the ensemble batch driver the same way. Both run
+from a checkout rather than installed; see the
 [MATLAB page](https://ismip.github.io/ismip7-scalar-processing/dev/matlab.html).
 
 ## Contributing
