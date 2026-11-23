@@ -47,7 +47,7 @@ units = keep_units(units, exp_group, groups, models, configids);
 
 if ~exist(log_dir, 'dir'), mkdir(log_dir); end
 d = datetime('now');
-stamp = char(datetime(d, 'Format', 'yyyymmdd''T''HHmmss'));
+stamp = char(datetime(d, 'Format', 'yyyyMMdd''T''HHmmss'));
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Plan and run each unit
