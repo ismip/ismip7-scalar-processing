@@ -4,7 +4,9 @@ Walks a submissions root laid out as
 ``{modelpath}/{group}/{model}/{exp_group}/{configid}/`` -- point ``--modelpath``
 at ``.../ISMIP7_submissions/{REGION}`` -- classifies each unit against the
 bundled CORE experiment table, pairs each projection with its historical
-configid by ESM, and processes each unit in a subprocess of its own.
+configid by ESM (or with a user-declared ``--hist-links`` row for ESM/PPE
+configids the table does not know), and processes each unit in a subprocess
+of its own.
 
 Directories and files that do not follow the strict ISMIP7 naming rules are
 logged and skipped: the batch never stops on one bad unit.
@@ -39,15 +41,16 @@ def load_core_csv(path=None):
     the driver makes.  The ISMIP7 data request, which *is* the project's, comes
     from isschecker instead -- see :mod:`ismip7_scalars.paths`.
 
-    Returns an empty table if the file is missing, in which case pairing falls
-    back on the configid numbering.
+    Returns an empty table if the file is missing, in which case every
+    projection falls back on ``--hist-links`` or is skipped.
     """
     if path is None:
         path = str(core_experiments_path())
     table = {}
     if not os.path.exists(path):
-        print(f'WARNING: {path} not found -- hist pairing falls back to '
-              f'configid parity')
+        print(f'WARNING: {path} not found -- CORE pairing is disabled; '
+              f'declare historical runs with --hist-links or they will be '
+              f'skipped')
         return table
     with open(path, newline='', encoding='utf-8-sig') as f:
         for row in csv.DictReader(f):
@@ -60,27 +63,47 @@ def load_core_csv(path=None):
     return table
 
 
-def hist_configid_for(cid, core):
-    """Historical configid a projection should reference.
+def load_hist_links(path):
+    """``configid -> (hist_configid, hist_exp_group_or_None)`` from a CSV.
 
-    The CORE table pairs each projection with the historical run driven by the
-    same ESM.  For a configid the table does not list -- a future ESM or PPE
-    experiment -- fall back on the numbering convention that pairs an even
-    configid with the odd one below it, and return ``None`` when even that
-    gives no candidate, so that the caller reports an honest skip instead of
-    pairing a projection against itself.
+    Columns: ``configid``, ``hist_configid`` and an optional
+    ``hist_exp_group``.  A row without the group links the historical run
+    into the projection's own experiment group.
+
+    Malformed rows are warned about and skipped; a missing or unreadable
+    file is the caller's error -- see :func:`main`, which refuses to run
+    with links that cannot be loaded.
+    """
+    links = {}
+    if not os.path.exists(path):
+        return links
+    with open(path, newline='', encoding='utf-8-sig') as f:
+        for row in csv.DictReader(f):
+            cid = (row.get('configid') or '').strip()
+            hcid = (row.get('hist_configid') or '').strip()
+            group = (row.get('hist_exp_group') or '').strip() or None
+            if not cid or not hcid:
+                print(f'WARNING: {path}: malformed row {row}')
+                continue
+            links[cid] = (hcid, group)
+    return links
+
+
+def hist_configid_for(cid, core):
+    """Historical configid a CORE projection should reference.
+
+    The CORE table pairs each projection with the historical run driven by
+    the same ESM.  Anything the table does not list -- an ESM or PPE
+    experiment, or a CORE configid yet to be added -- gets ``None`` here;
+    ESM/PPE experiment numbering carries no hist/projection order to read
+    a pairing out of.  Callers fall back on ``--hist-links`` instead, or
+    report an honest skip rather than pairing a projection against itself.
     """
     esm = core.get(cid, {}).get('esm', '')
     if 'MRI' in esm:
         return 'C002'
     if 'CESM' in esm:
         return 'C001'
-    try:
-        n = int(cid[1:])
-    except ValueError:
-        return None
-    if n % 2 == 0:
-        return f'{cid[0]}{n - 1:03d}'
     return None
 
 
@@ -111,7 +134,7 @@ def discover_units(root):
     return units, skips
 
 
-def build_command(args, unit, core):
+def build_command(args, unit, core, links):
     """Plan one unit.  Returns ``(cmd, note)``, or ``(None, reason)`` to skip."""
     group, model, exp_group, configid, path = unit
 
@@ -148,22 +171,28 @@ def build_command(args, unit, core):
         note = f'self-paired ({scenario})'
     else:
         hcid = hist_configid_for(configid, core)
+        hist_exp_group = None
         if hcid is None:
-            return None, (
-                f"no historical run is defined for {configid} "
-                f"('{scenario}'); pair it by hand with --hist-configid")
+            link = links.get(configid)
+            if link is None:
+                return None, (
+                    f"no historical run is defined for {configid} "
+                    f"('{scenario}'); declare one with --hist-links or run "
+                    f"it by hand with --hist-configid")
+            hcid, hist_exp_group = link
         if hcid == configid:
             return None, (f'{configid} would be paired against itself; '
                           f'a projection needs a separate historical run')
         hpath = os.path.join(args.modelpath, meta['group'], meta['model'],
-                             exp_group, hcid)
+                             hist_exp_group or exp_group, hcid)
         hlithks = sorted(glob.glob(os.path.join(hpath, 'lithk_*.nc')))
         if not hlithks:
             return None, f'no historical {hcid}'
         hmeta = parse_ismip7_name(os.path.basename(hlithks[0]))
         hist_exp = hmeta['experiment'] if hmeta else 'historical'
         cmd += ['--hist', hist_exp,
-                '--hist-configid', hcid, '--hist-exp-group', exp_group]
+                '--hist-configid', hcid,
+                '--hist-exp-group', hist_exp_group or exp_group]
         note = f'{scenario} -> hist {hcid}'
 
     if args.params_path:
@@ -227,6 +256,10 @@ def build_parser():
                         help='Print planned commands, run nothing')
     parser.add_argument('--core-csv', default=None,
                         help='Override the bundled CORE experiment table')
+    parser.add_argument('--hist-links', default=None,
+                        help='CSV linking configids without a table entry to '
+                             'their historical run: configid,hist_configid'
+                             '[,hist_exp_group]')
     parser.add_argument('--python', default=sys.executable,
                         help='Interpreter used to run each unit')
     parser.add_argument('--log-dir', default=None,
@@ -280,6 +313,12 @@ def main(argv=None):
     log_dir = args.log_dir or os.path.join(os.getcwd(), 'Output', 'logs')
 
     core = load_core_csv(args.core_csv)
+    links = {}
+    if args.hist_links:
+        links = load_hist_links(args.hist_links)
+        if not links:
+            parser.error(f'no usable links in {args.hist_links} -- the file '
+                         f'is missing or has no configid,hist_configid rows')
     units, skips = discover_units(args.modelpath)
     units = [u for u in units if keep_unit(args, u)]
 
@@ -292,7 +331,7 @@ def main(argv=None):
     for unit in units:
         group, model, exp_group, configid, _ = unit
         key = f'{group}/{model}/{exp_group}/{configid}'
-        cmd, note = build_command(args, unit, core)
+        cmd, note = build_command(args, unit, core, links)
         if cmd is None:
             results.append((key, f'SKIP: {note}', ''))
             print(f'[SKIP] {key} -- {note}')

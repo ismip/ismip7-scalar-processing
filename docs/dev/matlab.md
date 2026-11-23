@@ -15,6 +15,25 @@ matlab -nodisplay -nosplash -r "region='AIS'; run('scalars.m'); exit"
 matlab -nodisplay -nosplash -r "region='GrIS'; run('scalars.m'); exit"
 ```
 
+`matlab/ensemble.m` is the MATLAB mirror of `ismip7-scalars-ensemble`: it
+walks a submissions tree, pairs each projection with its historical run by
+the same rules ({doc}`../user/ensemble` — CORE table by ESM, or a
+user-declared links table for ESM/PPE), and runs `scalars.m` once per
+experiment. Each unit runs in its own function workspace with its own
+`diary` log, a raised error is caught and reported as a failed unit, and a
+run summary lands in the log directory. Set workspace variables before
+`run()` to override any default: `region`, `modelpath`, `datapath`,
+`params_path`, `outpath`, `exp_group`, `groups`, `models`, `configids`,
+`histout`, `flg_mm`, `flg_bm`, `flg_base`, `dry_run`, `log_dir`,
+`core_csv`, `hist_links` — the same settings as the ensemble
+command-line options, with `hist_links` pointing at the links CSV. Start
+with `dry_run=true`, which plans every unit and runs none.
+
+```bash
+cd matlab
+matlab -nodisplay -nosplash -r "region='AIS'; modelpath='...'; dry_run=true; run('ensemble.m'); exit"
+```
+
 Set workspace variables before `run()` to override any default: `group`,
 `model`, `exp`, `modelid`, `esm`, `forcingid`, `configid`, `exp_group`, `hist`,
 `hist_exp_group`, `hist_configid`, `refyear`, `histout`, `flg_mm`, `flg_bm`,
@@ -28,8 +47,9 @@ self-paired ocx run.
 ## Where the two differ
 
 **Missing input.** MATLAB raises; Python prints one `SKIP:` line and exits 2.
-The Python behaviour exists for the batch driver, which has no MATLAB
-counterpart.
+The Python behaviour exists for the batch driver, which catches it; the
+MATLAB batch driver (`ensemble.m`) catches the raised error instead and
+reports the unit as failed, so the same protection holds in both.
 
 **Optional variables.** Python treats `sftgrf`/`sftflf` and the flux variables
 as optional, skipping the output that needs them, and with `--base-variants`
