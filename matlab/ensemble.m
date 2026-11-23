@@ -47,8 +47,7 @@ units = keep_units(units, exp_group, groups, models, configids);
 
 if ~exist(log_dir, 'dir'), mkdir(log_dir); end
 d = datetime('now');
-stamp = sprintf('%04d%02d%02dT%02d%02d%02d', year(d), month(d), day(d), ...
-                hour(d), minute(d), second(d));
+stamp = char(datetime(d, 'Format', 'yyyymmdd''T''HHmmss'));
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Plan and run each unit
@@ -96,7 +95,11 @@ lines = {sprintf('ISMIP7 ensemble run -- %s -- %s', region, stamp); ...
          sprintf('units: %d   ok: %d   skipped: %d   failed: %d', ...
                  size(results, 1), n_ok, n_skip, n_fail); ''};
 for k = 1:size(results, 1)
-    lines{end+1} = sprintf('  %-55s  %s', results{k, 1}, results{k, 2});
+    entry = sprintf('  %-55s  %s', results{k, 1}, results{k, 2});
+    if ~isempty(results{k, 3})
+        entry = [entry '   [' results{k, 3} ']'];
+    end
+    lines{end+1} = entry; %#ok<AGROW>
 end
 report = strjoin(lines, sprintf('\n'));
 master_path = fullfile(log_dir, ['ensemble_' region '_' stamp '.log']);
@@ -112,13 +115,14 @@ fprintf('\nSummary written to %s\n', master_path);
 function [units, skips] = discover_units(root)
     % Find every processable unit under a submissions root.  A unit is a
     % struct (group, model, exp_group, configid, path); a skip is {key,
-    % reason, ''}.  Like Python, directory globs do not match a leading
-    % dot, so a .snapshot beside a real unit is invisible rather than
-    % skipped.
+    % reason, ''}.  Like Python's glob, a leading-dot directory beside a
+    % real unit is invisible rather than skipped; MATLAB's dir does list
+    % '.' and '..' entries, which are skipped here.
     units = {}; skips = {};
     listing = dir(fullfile(root, '*', '*', '*', '*'));
     for k = 1:numel(listing)
         if ~listing(k).isdir, continue; end
+        if any(strcmp(listing(k).name, {'.', '..'})), continue; end
         path = fullfile(listing(k).folder, listing(k).name);
         parts = strsplit(path, filesep);
         group = parts{end-3}; model = parts{end-2};
