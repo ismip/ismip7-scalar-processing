@@ -116,6 +116,13 @@ class TestLoadHistLinks:
     def test_missing_file_returns_empty(self, tmp_path):
         assert load_hist_links(str(tmp_path / 'nope.csv')) == {}
 
+    def test_bom_and_crlf_are_tolerated(self, tmp_path):
+        """The bundled CORE table ships with a BOM; links files may too."""
+        path = tmp_path / 'links.csv'
+        path.write_bytes(
+            '﻿configid,hist_configid\r\nP007,P001\r\n'.encode('utf-8'))
+        assert load_hist_links(str(path)) == {'P007': ('P001', None)}
+
 
 class TestHistConfigidFor:
     def test_cesm_projection_pairs_with_c001(self):
@@ -411,6 +418,32 @@ class TestBuildCommand:
         assert cmd is None
         assert 'paired against itself' in note
 
+    def test_a_link_never_overrides_a_table_entry(self, tmp_path):
+        """The CORE table always wins: a links row for a configid the table
+        lists is ignored."""
+        root = str(tmp_path)
+        make_unit(root, configid='C001', experiment='historical',
+                  years='1850-2014')
+        unit = make_unit(root, configid='C003', experiment='ssp370')
+        links = {'C003': ('P001', 'PPE')}
+        cmd, note = build_command(make_args(root), unit, CORE, links)
+        assert cmd is not None
+        assert cmd[cmd.index('--hist-configid') + 1] == 'C001'
+        assert cmd[cmd.index('--hist-exp-group') + 1] == 'CORE'
+        assert 'hist C001' in note
+
+    def test_self_paired_scenario_ignores_a_declared_link(self, tmp_path):
+        """historical is its own reference; a links row does not change
+        that."""
+        root = str(tmp_path)
+        unit = make_unit(root, exp_group='PPE', configid='P001',
+                         experiment='historical', years='1850-2014')
+        links = {'P001': ('P009', None)}
+        cmd, note = build_command(make_args(root), unit, CORE, links)
+        assert cmd is not None
+        assert cmd[cmd.index('--hist-configid') + 1] == 'P001'
+        assert 'self-paired' in note
+
 
 class TestKeepUnit:
     UNIT = ('NORCE', 'CISM', 'ESM', 'E001', '/path')
@@ -473,3 +506,66 @@ class TestParser:
             main(['--region', 'AIS', '--modelpath', str(tmp_path),
                   '--no-csv', '--no-netcdf'])
         assert exc.value.code == 2
+
+    def test_missing_hist_links_file_is_an_error(self, tmp_path):
+        """The batch would otherwise skip every unpaired experiment on a
+        typo in the path."""
+        with pytest.raises(SystemExit) as exc:
+            main(['--region', 'AIS', '--modelpath', str(tmp_path),
+                  '--hist-links', str(tmp_path / 'nope.csv')])
+        assert exc.value.code == 2
+
+    def test_hist_links_file_without_usable_rows_is_an_error(self, tmp_path):
+        with pytest.raises(SystemExit) as exc:
+            main(['--region', 'AIS', '--modelpath', str(tmp_path),
+                  '--hist-links',
+                  str(self._links_file(tmp_path, 'configid,hist_configid\n'
+                                             'P007\n'))])
+        assert exc.value.code == 2
+
+    @staticmethod
+    def _links_file(tmp_path, text):
+        path = tmp_path / 'links.csv'
+        path.write_text(text)
+        return path
+
+
+class TestMainDryRun:
+    """The parse -> links -> plan -> summary wiring, end to end."""
+
+    def test_links_pair_ppe_projections_end_to_end(self, tmp_path, capsys):
+        root = str(tmp_path / 'models')
+        make_unit(root, exp_group='PPE', configid='P001',
+                  experiment='historical', years='1850-2014')
+        make_unit(root, exp_group='PPE', configid='P007',
+                  experiment='ssp585')
+        links = self._links_file(tmp_path, 'configid,hist_configid\n'
+                                           'P007,P001\n')
+        rc = main(['--region', 'AIS', '--modelpath', root, '--dry-run',
+                   '--hist-links', str(links),
+                   '--log-dir', str(tmp_path / 'logs')])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert '[PLAN] ISMIP7/SYNTH1/PPE/P001 -- self-paired (historical)' \
+            in out
+        assert '[PLAN] ISMIP7/SYNTH1/PPE/P007 -- ssp585 -> hist P001' in out
+        # The summary is written even for a dry run.
+        assert any((tmp_path / 'logs').glob('ensemble_AIS_*.log'))
+
+    def test_unlinked_ppe_projections_are_skipped_end_to_end(self, tmp_path,
+                                                             capsys):
+        root = str(tmp_path / 'models')
+        make_unit(root, exp_group='PPE', configid='P007',
+                  experiment='ssp585')
+        rc = main(['--region', 'AIS', '--modelpath', root, '--dry-run',
+                   '--log-dir', str(tmp_path / 'logs')])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert '[SKIP] ISMIP7/SYNTH1/PPE/P007' in out
+        assert '--hist-links' in out
+
+    @staticmethod
+    def _links_file(tmp_path, text):
+        path = tmp_path / 'links.csv'
+        path.write_text(text)
+        return path
